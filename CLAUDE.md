@@ -30,6 +30,7 @@ uv(패키지) · ruff(린트·포맷) · pyright basic(타입)
 
 - `engine/` 은 `games/`·`ai/`·`eval/`·`ui/`·wandb·numpy·torch 에 의존하지 않는다. 순수 Python 이다.
 - `ai/` 는 어떤 게임 모듈도 import 하지 않는다. `games.base` 만 안다. import 그래프 테스트로 강제한다.
+- `eval/`(재는 쪽: 완벽한 상대, 대국 승률, 진단)은 `ai/` 와 `games.base` 만 쓴다. `ai/` 는 `eval/` 을 모른다.
 - `games/` 와 `ai/` 경계를 넘는 판 표현은 `numpy.ndarray` `(C, H, W)` 다. torch 변환·배치·디바이스는 `ai/` 가 맡는다.
 - `Position` 은 불변이고 해시 가능하다. `apply_move` 는 새 `Position` 을 반환한다. `Game` 프로토콜에 `undo` 를 두지 않는다 — 가변 구현은 측정 후 프로토콜을 만족하는 별개 클래스로 추가하고, 단순 구현과 결과가 같은지 테스트로 확인한다.
 - 막힘 판정은 술어 하나로 분리한다. 나중에 다른 해석과 A/B 할 수 있어야 한다.
