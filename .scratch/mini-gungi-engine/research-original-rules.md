@@ -133,3 +133,19 @@
 - 접속 실패: https://www.kyproduce.com/gungi/rules/ (HTTP 525), https://gungi.2410.dev/rules.html (연결 끊김). 이 두 곳은 근거로 쓰지 않았다.
 
 영어권의 23종 말·손패 복귀·immobile strike 류 팬 규칙은 근거에서 제외했다. gungi.js 는 2022 상품 룰북의 팬 번역을 바탕으로 한다고 밝힌 별개의 구현이며, 어디까지나 2차 자료다.
+
+## 6. 재확인: 1단 말은 2단 말을 잡을 수 있는가 (2026-11-27)
+
+**잡을 수 없다.** 대국 화면에서 나온 의문이라 다시 확인했다. 반대로 적은 자료는 읽은 범위에 없었다. 일본어 원문은 이번에도 자동 도구를 거쳐 읽었다.
+
+| 자료 | 내용 |
+|---|---|
+| [1차-특집] https://www.universal-music.co.jp/cinema/hunter-gungi/ | 겹친 말은 「同じ高さ以上の駒でしか取られなくなる」. 높이를 재는 법이나 1단 대 2단 예시는 없다 |
+| [1차-QA] | 잡기의 높이 조건을 말하지 않는다 (확인도 반박도 없음) |
+| [2차] https://note.com/roggysan_phd/n/n903eeed54e90 | 움직이는 말보다 높은 단의 적 말은 잡을 수도 쌓을 수도 없다 |
+| [2차] https://bodoge.hoobby.net/games/hunterhunter-gungi | 같은 단 이하만 잡거나 쌓는다. 룰북 상급편 기준이라고 적는다 |
+| [2차] https://www.bodoge-view.online/gungi1/ | 겹친 말은 더 낮은 말에게 공격받지 않는다 |
+| [2차] gungi.js `move_gen.ts` | 도착 칸의 단이 더 높으면 모든 말 종류에서 수를 만들지 않는다 |
+
+레벨이나 특수 말에 따른 잡기 예외는 어디에도 없었다. 공식 解説書 본문은 여전히 읽지 못했다.
+https://bikkuri-malk.site/hunterxhunter-gungi-rule/ (403)와 https://gungi.2410.dev/rules.html (연결 끊김)은 읽지 못했다.
