@@ -45,4 +45,4 @@ typeCheckingMode = "basic"
 pythonVersion = "3.11"
 venvPath = "."
 venv = ".venv"
-include = ["games", "engine", "ai", "eval", "ui", "tests"]
+include = ["games", "engine", "ai", "eval", "ui", "scripts", "tests"]

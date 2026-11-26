@@ -20,6 +20,7 @@ uv(패키지) · ruff(린트·포맷) · pyright basic(타입)
 - `ai/` — MCTS, 신경망, 자가 대국, 학습 루프
 - `eval/` — 대국 평가, Elo 계산
 - `ui/` — pygame 화면
+- `scripts/` — 손으로 돌리는 스크립트. `ai/` 와 게임 모듈을 둘 다 import 하는 유일한 자리(합성 루트)라서 `ai/` 밖에 있다
 - `tests/`
 
 의존 방향은 `ai/` → `games/` ← `engine/`. `engine/` 과 `ai/` 는 서로를 모른다. 근거는 ADR-0001.
