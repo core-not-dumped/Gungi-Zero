@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>gungi-zero 아키텍처 점검</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "strict" });
+</script>
+<style>
+  body { word-break: keep-all; overflow-wrap: anywhere; }
+  .seam { border: 2px dashed #64748b; }
+  .mod { border: 1px solid #94a3b8; border-radius: 6px; background: #fff; padding: 6px 10px; font-size: 13px; }
+  .deep { background: #0f172a; color: #f1f5f9; border: 4px solid #020617; border-radius: 8px; padding: 12px; font-size: 13px; }
+  .inner { border: 1px solid #475569; border-radius: 4px; color: #94a3b8; padding: 4px 8px; margin-top: 6px; }
+  .leak { border: 2px solid #dc2626; color: #b91c1c; }
+  .arrow { text-align: center; color: #64748b; line-height: 1.1; padding: 2px 0; }
+  .red { color: #dc2626; font-weight: 700; }
+</style>
+</head>
+<body class="bg-stone-50 text-slate-900 font-sans">
+<main class="max-w-5xl mx-auto px-4 py-10 space-y-10">
+
+<header>
+  <h1 class="text-3xl font-serif">gungi-zero 아키텍처 점검</h1>
+  <p class="text-sm text-slate-600 mt-1">2026-11-27 · <span class="font-mono">fbb477b</span> · 기준: 2단계(MCTS·자가 대국)와 2.5단계(solver)</p>
+  <div class="flex flex-wrap gap-3 mt-4 text-xs">
+    <span class="mod">실선 = module</span>
+    <span class="seam rounded px-2 py-1">점선 = seam</span>
+    <span class="mod leak">빨강 = 새는 지점</span>
+    <span class="deep !p-1 !px-2">진한 상자 = deep module</span>
+  </div>
+</header>
+
+<section id="candidates" class="space-y-10">
+
+<!-- 1 -->
+<article id="c1" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+  <h2 class="text-xl font-serif">1. 좌표계 약속을 <span class="font-mono">Game</span> interface 안으로 넣기</h2>
+  <div class="flex gap-2 text-xs"><span class="bg-emerald-100 text-emerald-800 rounded px-2 py-1">Strong</span><span class="bg-slate-100 rounded px-2 py-1">in-process</span></div>
+  <p class="font-mono text-sm">games/base.py · tests/test_game_conformance.py · games/mini_gungi.py</p>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">Before</div>
+      <div class="mod">MCTS (예정): 어느 프레임인지 스스로 기억</div>
+      <div class="arrow">↓</div>
+      <div class="seam rounded p-2 space-y-2">
+        <div class="mod leak">outcome(canonical(p)) → <b>승자가 반대</b></div>
+        <div class="mod leak">from_canonical(canonical(p), i) → <b>조용히 틀림</b><br><span class="font-mono text-xs">411 → 213 → 213</span></div>
+        <div class="mod leak">to_canonical(p, -1) → <span class="font-mono">-625</span></div>
+        <div class="mod">가치의 부호: 정해지지 않음</div>
+      </div>
+    </div>
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">After</div>
+      <div class="mod">MCTS (예정)</div>
+      <div class="arrow">↓</div>
+      <div class="deep">Game interface
+        <div class="inner">연산별로 어느 프레임인지 명시</div>
+        <div class="inner">부호·순서·오류 약속 명시</div>
+        <div class="inner">적합성 suite 가 모든 게임에서 확인</div>
+      </div>
+    </div>
+  </div>
+  <p><b>문제</b> — 정규형 프레임을 쓰라고 안내하지만, 어떤 연산이 프레임에 따라 달라지는지는 interface 에 없다.</p>
+  <p><b>해결</b> — 프레임·부호·합법수 순서·오류 약속을 interface 에 적고 파라미터화된 suite 로 고정한다.</p>
+  <ul class="list-disc pl-5 text-sm">
+    <li>부호 버그가 한 seam 에서 드러남</li>
+    <li>leverage: 테스트 하나, 게임 다섯</li>
+    <li>MCTS 전에 locality 확보</li>
+    <li>render/parse 왕복도 suite 가 확인</li>
+  </ul>
+  <p class="text-sm bg-amber-50 border border-amber-200 rounded p-2">ADR-0003 과 충돌 없음. 정규형 결정은 유지하고 약속만 명시한다.</p>
+</article>
+
+<!-- 2 -->
+<article id="c2" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+  <h2 class="text-xl font-serif">2. <span class="font-mono">ai/</span> 에 대국 진행 module 깊게 만들기</h2>
+  <div class="flex gap-2 text-xs"><span class="bg-emerald-100 text-emerald-800 rounded px-2 py-1">Strong</span><span class="bg-slate-100 rounded px-2 py-1">in-process</span></div>
+  <p class="font-mono text-sm">ai/episode.py · ai/random_play.py · ui/session.py · scripts/measurement_report.py · scripts/random_episode.py · scripts/perft.py · scripts/state_space.py</p>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">Before</div>
+      <pre class="mermaid">
+flowchart TB
+  R[play_random_episode<br/>RandomAI 고정] --> E[Episode<br/>수·최종 국면·결과]
+  E --> M[measurement_report<br/>수를 다시 둠]
+  E --> P[random_episode<br/>수를 다시 둠]
+  S[자가 대국 예정<br/>두 번째 loop] -.-> E
+  T[perft · count_reachable<br/>scripts 에 있어 ai 가 못 씀]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class M,P,S,T leak
+      </pre>
+    </div>
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">After</div>
+      <div class="seam rounded p-2 mb-1 text-xs">seam: 국면 → 수 (adapter: 랜덤, MCTS, 탐색 AI)</div>
+      <div class="deep">대국 진행 module (게임을 모름)
+        <div class="inner">loop 하나</div>
+        <div class="inner">ply 별 기록 (정책 타깃 자리)</div>
+        <div class="inner">가치 타깃의 부호</div>
+        <div class="inner">Game 전체 순회</div>
+      </div>
+      <div class="arrow">↑ 로거·진단은 scripts/ 가 주입</div>
+    </div>
+  </div>
+  <p><b>문제</b> — loop 이 랜덤 AI 에 묶여 있고 기록이 얕아서, 쓰는 쪽마다 대국을 다시 둔다.</p>
+  <p><b>해결</b> — 수를 고르는 쪽을 받아 한 판을 두고 필요한 것을 남기는 module 하나로 모은다.</p>
+  <ul class="list-disc pl-5 text-sm">
+    <li>adapter 둘 이상: 실제 seam</li>
+    <li>locality: 부호 규칙 한 곳</li>
+    <li>재생 loop 중복 제거</li>
+    <li>틱택토로 loop 전체 테스트</li>
+  </ul>
+  <p class="text-sm bg-amber-50 border border-amber-200 rounded p-2">ADR-0001 유지: 종료 사유·로그 표기는 <span class="font-mono">ai/</span> 가 아니라 주입으로 받는다. ADR-0004 의 종료 규칙 버전 기록도 놓일 자리가 아직 없다.</p>
+</article>
+
+<!-- 3 -->
+<article id="c3" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+  <h2 class="text-xl font-serif">3. 판 좌표와 180° 회전을 한 곳에 모으기</h2>
+  <div class="flex gap-2 text-xs"><span class="bg-emerald-100 text-emerald-800 rounded px-2 py-1">Strong</span><span class="bg-slate-100 rounded px-2 py-1">in-process</span></div>
+  <p class="font-mono text-sm">engine/variant.py · engine/rules.py · engine/position.py · games/mini_gungi.py · ui/app.py</p>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">Before — 같은 지식, 여러 모양</div>
+      <div class="grid grid-cols-2 gap-2">
+        <div class="mod leak">variant: 좌표쌍 회전</div>
+        <div class="mod leak">initial_position: 칸 수−1−i</div>
+        <div class="mod leak">rotated: reversed(board)</div>
+        <div class="mod leak">행동 인덱스: 쌍 산술</div>
+        <div class="mod leak">encode: <b>경로 전체</b> 회전</div>
+        <div class="mod leak">ui: 판 크기를 tensor_shape 에서</div>
+      </div>
+      <table class="w-full text-sm mt-3 font-mono">
+        <tr class="text-left"><th>encode µs</th><th>선수</th><th>후수</th></tr>
+        <tr><td>ply 80/81</td><td>12</td><td class="red">444</td></tr>
+        <tr><td>ply 198/199</td><td>22</td><td class="red">1073</td></tr>
+      </table>
+      <p class="text-xs text-slate-500">帥 둘만 있는 판, 이 컴퓨터에서 측정</p>
+    </div>
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">After</div>
+      <div class="deep">판 기하 module
+        <div class="inner">칸 ↔ 열·행 ↔ 이름</div>
+        <div class="inner">칸·판·행동 인덱스 회전</div>
+        <div class="inner">판만 회전 / 경로까지 회전</div>
+      </div>
+      <div class="arrow">↑</div>
+      <div class="mod">engine · 어댑터 · (어댑터를 거쳐) ui</div>
+    </div>
+  </div>
+  <p><b>문제</b> — 칸 번호와 회전이 여러 곳에서 다시 유도되고, <span class="font-mono">encode</span> 는 판만 필요한데 경로까지 돌린다.</p>
+  <p><b>해결</b> — 기하를 설정 곁의 한 module 에 모으고 <span class="font-mono">encode</span> 는 판만 돌린다.</p>
+  <ul class="list-disc pl-5 text-sm">
+    <li>locality: 9×9 변경이 한 곳</li>
+    <li>측정된 비용 제거</li>
+    <li>기존 적합성 테스트가 회귀 감시</li>
+    <li>테스트의 가짜 수 파싱 제거</li>
+  </ul>
+  <p class="text-sm bg-amber-50 border border-amber-200 rounded p-2">ADR-0001 유지: <span class="font-mono">ui/</span> 는 계속 어댑터를 통해서만 본다. <span class="font-mono">canonical</span> 의 경로 회전(반복 횟수 보존)은 그대로 필요하다.</p>
+</article>
+
+<!-- 4 -->
+<article id="c4" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+  <h2 class="text-xl font-serif">4. 국면 하나는 한 번만 평가하기</h2>
+  <div class="flex gap-2 text-xs"><span class="bg-amber-100 text-amber-800 rounded px-2 py-1">Worth exploring</span><span class="bg-slate-100 rounded px-2 py-1">in-process</span></div>
+  <p class="font-mono text-sm">engine/rules.py · engine/position.py · games/mini_gungi.py · games/base.py</p>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">Before — 3번</div>
+      <pre class="mermaid">
+sequenceDiagram
+  participant M as MCTS
+  participant E as RuleEngine
+  M->>E: outcome(p)
+  Note over E: 수 생성 + 경로 O(ply)
+  M->>E: legal_action_mask(p)
+  Note over E: 수 생성 + 경로 O(ply)
+  M->>E: apply_move(p, m)
+  Note over E: 수 생성 + 경로 O(ply)
+      </pre>
+    </div>
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">After — 1번</div>
+      <div class="mod">MCTS: 같은 세 호출</div>
+      <div class="arrow">↓ interface 그대로</div>
+      <div class="deep">RuleEngine
+        <div class="inner">국면별 평가를 한 번 계산해 재사용</div>
+      </div>
+    </div>
+  </div>
+  <p><b>문제</b> — 비용은 interface 의 일부인데 적혀 있지 않고, 같은 평가를 반복해서 낸다.</p>
+  <p><b>해결</b> — interface 는 두고 implementation 안에서 반복 평가를 감춘다.</p>
+  <ul class="list-disc pl-5 text-sm">
+    <li>leverage: 호출자 변경 없음</li>
+    <li>perft 가 결과 동일성 확인</li>
+    <li>MCTS 로 측정한 뒤 판단</li>
+  </ul>
+  <p class="text-sm bg-amber-50 border border-amber-200 rounded p-2">CLAUDE.md: 속도 최적화는 측정 후. 지금은 ply 198 에서도 호출당 약 30 µs 다.</p>
+</article>
+
+<!-- 5 -->
+<article id="c5" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+  <h2 class="text-xl font-serif">5. 판만으로 끝난 것과 이력으로 끝난 것 구분하기</h2>
+  <div class="flex gap-2 text-xs"><span class="bg-amber-100 text-amber-800 rounded px-2 py-1">Worth exploring · 2.5단계</span><span class="bg-slate-100 rounded px-2 py-1">in-process</span></div>
+  <p class="font-mono text-sm">engine/rules.py · games/base.py · scripts/state_space.py</p>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">Before</div>
+      <div class="mod">solver (예정)</div>
+      <div class="arrow">↓ Outcome 하나</div>
+      <div class="mod leak">帥 잡기 · 합법수 없음 (판 + 차례)<br>＋ 반복 · 수 제한 (경로 + ply)<br>섞여서 구분 불가</div>
+      <div class="arrow">↓</div>
+      <div class="mod leak">경로 없는 국면은 parse(render(p)) 로만<br>(ply 는 남음)</div>
+    </div>
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">After</div>
+      <div class="mod">solver</div>
+      <div class="arrow">↓</div>
+      <div class="deep">군의 어댑터
+        <div class="inner">solver 상태가 무엇인지 정의</div>
+        <div class="inner">이력과 무관한 종료를 답함</div>
+        <div class="inner">반복·200수와의 관계 기록</div>
+      </div>
+    </div>
+  </div>
+  <p><b>문제</b> — <span class="font-mono">ai/</span> 의 solver 가 규칙 지식을 다시 만들거나 텍스트를 거쳐야 한다.</p>
+  <p><b>해결</b> — solver 상태를 먼저 정하고, 이력 무관 종료를 어댑터가 답하게 한다.</p>
+  <ul class="list-disc pl-5 text-sm">
+    <li>locality: 종료 규칙 지식 유지</li>
+    <li>solver 정답의 전제가 테스트됨</li>
+    <li>두 번째 국면 생성자 대비</li>
+  </ul>
+  <p class="text-sm bg-amber-50 border border-amber-200 rounded p-2">ADR-0004 는 그대로. 보고서(<span class="font-mono">docs/nano-state-space.md</span>)도 이 결정을 2.5단계로 미뤘다.</p>
+</article>
+
+<!-- 6 -->
+<article id="c6" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+  <h2 class="text-xl font-serif">6. 말 종류별 표의 빠짐을 한 곳에서 확인하기</h2>
+  <div class="flex gap-2 text-xs"><span class="bg-slate-200 rounded px-2 py-1">Speculative · 6단계 전까지 불필요</span><span class="bg-slate-100 rounded px-2 py-1">in-process</span></div>
+  <p class="font-mono text-sm">engine/pieces.py · engine/movement.py · games/mini_gungi.py · ui/app.py · scripts/measurement_report.py · scripts/state_space.py</p>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">Before</div>
+      <div class="grid grid-cols-2 gap-2">
+        <div class="mod">PieceType</div><div class="mod">MOVEMENT</div>
+        <div class="mod">SYMBOLS</div><div class="mod leak">PLANE_KINDS: 첫 encode 에서야 실패</div>
+        <div class="mod leak">종료 사유 이름 2곳</div><div class="mod leak">kind.value 정렬: "순서에 뜻 없음" 과 어긋남</div>
+      </div>
+    </div>
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">After</div>
+      <div class="deep">생성 시점 확인 하나
+        <div class="inner">모든 말이 모든 표에 있는지</div>
+        <div class="inner">표시 이름은 한 곳</div>
+      </div>
+      <div class="mod mt-2">PLANE_KINDS 는 별도 유지 (순서 = 가중치 의미)</div>
+    </div>
+  </div>
+  <p><b>문제</b> — 말 하나를 더하면 여러 표를 고쳐야 하고 빠짐이 늦게 드러난다.</p>
+  <p><b>해결</b> — 완전성은 생성할 때 확인하고 표시 이름은 모은다.</p>
+  <ul class="list-disc pl-5 text-sm"><li>빠짐이 즉시 드러남</li><li>locality: 표시 이름 한 곳</li></ul>
+</article>
+
+<!-- 7 -->
+<article id="c7" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+  <h2 class="text-xl font-serif">7. 화면이 쓰는 군의 전용 interface 드러내기</h2>
+  <div class="flex gap-2 text-xs"><span class="bg-slate-200 rounded px-2 py-1">Speculative</span><span class="bg-slate-100 rounded px-2 py-1">in-process</span></div>
+  <p class="font-mono text-sm">ui/session.py · ui/app.py · games/mini_gungi.py</p>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">Before</div>
+      <div class="mod">ui/</div>
+      <div class="arrow">↓</div>
+      <div class="seam rounded p-2 text-sm">Game ＋ tower · end_reason · render_log_move · render_square · GungiMove 생성<br><span class="red">암묵 약속: (출발, 도착)당 수는 최대 둘, 쌓기만 다름</span></div>
+    </div>
+    <div class="rounded-lg bg-stone-100 p-4">
+      <div class="text-xs uppercase tracking-wider mb-2">After</div>
+      <div class="mod">ui/</div>
+      <div class="arrow">↓</div>
+      <div class="deep">이름 붙인 화면용 interface
+        <div class="inner">Game 에는 넣지 않음</div>
+        <div class="inner">약속을 명시</div>
+      </div>
+    </div>
+  </div>
+  <p><b>문제</b> — <span class="font-mono">Game</span> 밖의 연산과 약속이 어댑터에 흩어져 있다.</p>
+  <p><b>해결</b> — 화면용 interface 를 의도한 것으로 이름 붙인다.</p>
+  <ul class="list-disc pl-5 text-sm"><li>어댑터 확장 방향이 보임</li><li>약속이 테스트 대상이 됨</li></ul>
+  <p class="text-sm bg-amber-50 border border-amber-200 rounded p-2">ADR-0001 은 <span class="font-mono">ui/</span> 의 군의 전용을 막지 않는다.</p>
+</article>
+
+</section>
+
+<section id="top-recommendation" class="deep !p-6 space-y-2">
+  <h2 class="text-xl font-serif">먼저 할 것: <a class="underline" href="#c1">1. 좌표계 약속</a></h2>
+  <p>부호와 프레임 실수는 예외 없이 학습만 망치므로 MCTS 코드보다 먼저 고정한다. 이어서 <a class="underline" href="#c3">3</a>(작고 측정됨), <a class="underline" href="#c2">2</a>(2단계의 뼈대) 순이다.</p>
+</section>
+
+</main>
+</body>
+</html>
