@@ -1,0 +1,49 @@
+[project]
+name = "gungi-zero"
+version = "0.1.0"
+description = "AlphaZero-style self-play reinforcement learning for Gungi"
+readme = "CONTEXT.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "numpy>=2.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "hypothesis>=6.112",
+    "ruff>=0.8",
+    "pyright>=1.1.390",
+]
+
+# Flat layout: games/, engine/, ai/, eval/, ui/ are top-level packages in the
+# repository root, not under src/. Nothing is installed, so no build backend.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "SIM", # flake8-simplify
+    "RUF",
+]
+
+[tool.pyright]
+typeCheckingMode = "basic"
+pythonVersion = "3.11"
+venvPath = "."
+venv = ".venv"
+include = ["games", "engine", "ai", "eval", "ui", "tests"]
