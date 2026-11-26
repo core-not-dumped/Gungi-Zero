@@ -2,6 +2,8 @@
 
 from collections import Counter
 
+import pytest
+
 from ai.random_play import RandomAI, play_random_episode
 from games.base import Outcome
 from games.tictactoe import TicTacToe
@@ -15,6 +17,13 @@ def test_the_random_ai_only_ever_picks_a_legal_move() -> None:
         move = player.choose(position)
         assert move in game.legal_moves(position)
         position = game.apply_move(position, move)
+
+
+def test_the_random_ai_refuses_a_finished_position() -> None:
+    game = TicTacToe()
+    finished = play_random_episode(game, seed=3).final_position
+    with pytest.raises(ValueError):
+        RandomAI(game, seed=0).choose(finished)
 
 
 def test_the_same_seed_picks_the_same_stream_of_moves() -> None:

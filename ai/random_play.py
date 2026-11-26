@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 from typing import Generic
 
-from ai.episode import Episode
+from ai.episode import Episode, play_episode
 from games.base import Game, MoveT, PositionT
 
 
@@ -28,12 +28,4 @@ def play_random_episode(
 ) -> Episode[PositionT, MoveT]:
     """랜덤 AI 둘이 한 판을 끝까지 둔다. 같은 시드는 같은 대국을 만든다."""
     ai = RandomAI(game, seed)
-    position = game.initial_position()
-    moves: list[MoveT] = []
-    outcome = game.outcome(position)
-    while outcome is None:
-        move = ai.choose(position)
-        moves.append(move)
-        position = game.apply_move(position, move)
-        outcome = game.outcome(position)
-    return Episode(moves=tuple(moves), final_position=position, outcome=outcome)
+    return play_episode(game, ai, ai)

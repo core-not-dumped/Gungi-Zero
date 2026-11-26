@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Generic
 
-from games.base import MoveT, Outcome, PositionT
+from ai.base import AI
+from games.base import Game, MoveT, Outcome, Player, PositionT
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,3 +19,22 @@ class Episode(Generic[PositionT, MoveT]):
     moves: tuple[MoveT, ...]
     final_position: PositionT
     outcome: Outcome
+
+
+def play_episode(
+    game: Game[PositionT, MoveT],
+    first: AI[PositionT, MoveT],
+    second: AI[PositionT, MoveT],
+) -> Episode[PositionT, MoveT]:
+    """초기 국면부터 종료까지, `first` 가 선수·`second` 가 후수로 둔다.
+
+    같은 AI 를 양쪽에 넘겨도 된다. 합법수가 아닌 수를 고르면 `ValueError` 다.
+    """
+    position = game.initial_position()
+    moves: list[MoveT] = []
+    while (outcome := game.outcome(position)) is None:
+        ai = first if position.player is Player.FIRST else second
+        move = ai.choose(position)
+        moves.append(move)
+        position = game.apply_move(position, move)
+    return Episode(tuple(moves), position, outcome)
