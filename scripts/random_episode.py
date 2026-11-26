@@ -6,7 +6,7 @@ uv run python -m scripts.random_episode --game gungi-marshal-only --seed 4
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from ai.episode import Episode
@@ -23,13 +23,19 @@ def result_line(episode: Episode[Any, Any]) -> str:
     return f"결과: {result} ({len(episode.moves)} 수)"
 
 
-def print_random_episode(game: Game[PositionT, MoveT], seed: int | None) -> None:
+def print_random_episode(
+    game: Game[PositionT, MoveT],
+    seed: int | None,
+    log_move: Callable[[PositionT, MoveT], str] | None = None,
+) -> None:
+    """`log_move` 는 로그 표기가 수 표기와 다른 게임이 넘긴다. 없으면 수 표기를 그대로 찍는다."""
     episode = play_random_episode(game, seed)
 
     position = game.initial_position()
     print(game.render(position))
     for number, move in enumerate(episode.moves, start=1):
-        print(f"{number:2}. {position.player.value} {game.render_move(move)}")
+        text = game.render_move(move) if log_move is None else log_move(position, move)
+        print(f"{number:2}. {position.player.value} {text}")
         position = game.apply_move(position, move)
         print(game.render(position))
     print(result_line(episode))
@@ -44,7 +50,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.game == "tictactoe":
         print_random_episode(TicTacToe(), args.seed)
     else:
-        print_random_episode(Gungi(MARSHAL_ONLY), args.seed)
+        gungi = Gungi(MARSHAL_ONLY)
+        print_random_episode(gungi, args.seed, gungi.render_log_move)
     return 0
 
 

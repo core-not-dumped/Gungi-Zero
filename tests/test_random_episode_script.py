@@ -26,6 +26,16 @@ def test_the_script_logs_gungi_moves_in_the_move_notation(
     assert printed.rstrip().splitlines()[-1].startswith("결과: ")
 
 
+def test_the_script_marks_the_capture_that_ends_a_gungi_episode(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # 시드 4 는 帥 를 잡아 끝나는 대국이다. 帥 만 있으므로 잡기는 마지막 수 하나뿐이다.
+    main(["--game", "gungi-marshal-only", "--seed", "4"])
+    moves = re.findall(r"^ *\d+\. [▲▽] (\S+)$", capsys.readouterr().out, re.MULTILINE)
+    assert moves[-1].endswith("x")
+    assert not any(move.endswith("x") for move in moves[:-1])
+
+
 def test_the_script_is_reproducible_from_its_seed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

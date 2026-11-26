@@ -109,6 +109,47 @@ def test_a_board_that_cannot_exist_is_refused(row_one: str) -> None:
 """)
 
 
+@pytest.mark.parametrize(
+    ("row_five", "row_one"),
+    [
+        # 帥 가 하나도 없다.
+        (" 5   .       .       .       .       .", " 1   .       .       .       .       ."),
+        # 방금 둔 ▽ 의 帥 가 없다. 자기 수로 자기 帥 를 잃을 수는 없다.
+        (" 5   .       .       .       .       .", " 1   .       .      ▲帥      .       ."),
+        # 帥 위에는 아군도 적군도 올라갈 수 없다.
+        (" 5   .       .      ▽帥      .       .", " 1   .       .    ▽兵/▲帥    .       ."),
+        (" 5   .       .    ▽兵/▽帥    .       .", " 1   .       .      ▲帥      .       ."),
+    ],
+)
+def test_a_board_that_no_game_can_reach_is_refused(row_five: str, row_one: str) -> None:
+    game = Gungi(FOUR_KINDS)
+    with pytest.raises(ValueError):
+        game.parse(f"""\
+     a       b       c       d       e
+{row_five}
+ 4   .       .       .       .       .
+ 3   .       .       .       .       .
+ 2   .       .       .       .       .
+{row_one}
+차례: ▲   ply: 4
+""")
+
+
+def test_a_marshal_on_top_of_a_tower_and_a_finished_board_are_accepted() -> None:
+    game = Gungi(FOUR_KINDS)
+    # 둘 차례인 ▲ 의 帥 가 잡힌 판은 끝난 대국의 정상적인 모습이다.
+    position = game.parse("""\
+     a       b       c       d       e
+ 5   .       .    ▽帥/▲兵    .       .
+ 4   .       .       .       .       .
+ 3   .       .       .       .       .
+ 2   .       .       .       .       .
+ 1   .       .       .       .       .
+차례: ▲   ply: 4
+""")
+    assert game.outcome(position) is Outcome.SECOND_WINS
+
+
 def test_the_marshal_only_variant_starts_with_two_marshals_facing_each_other() -> None:
     game = Gungi(MARSHAL_ONLY)
     assert (
@@ -250,6 +291,25 @@ def test_moves_are_written_from_square_to_square() -> None:
     for text in ("b1c3", "f1-c3", "b6-c3", "b0-c3", "b1-c3x", "b01-c3", "b1-c3-d4", ""):
         with pytest.raises(ValueError):
             game.parse_move(text)
+
+
+def test_the_log_notation_marks_only_captures() -> None:
+    game = Gungi(MARSHAL_ONLY)
+    position = game.parse("""\
+     a       b       c       d       e
+ 5   .       .       .       .       .
+ 4   .       .       .       .       .
+ 3   .       .      ▽帥      .       .
+ 2   .       .      ▲帥      .       .
+ 1   .       .       .       .       .
+차례: ▲   ply: 4
+""")
+    capture = game.parse_move("c2-c3")
+    step = game.parse_move("c2-b2")
+    assert game.render_log_move(position, capture) == "c2-c3x"
+    assert game.render_log_move(position, step) == "c2-b2"
+    # x 는 로그에만 붙는다. 수 표기 자체는 그대로다.
+    assert game.render_move(capture) == "c2-c3"
 
 
 def test_the_action_space_is_source_square_times_target_square() -> None:

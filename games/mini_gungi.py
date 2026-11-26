@@ -83,6 +83,10 @@ def _display_width(text: str) -> int:
     return sum(2 if unicodedata.east_asian_width(char) in "WF" else 1 for char in text)
 
 
+def _piece_count(position: GungiPosition) -> int:
+    return sum(len(tower) for tower in position.engine_position.board)
+
+
 @final
 class Gungi:
     """변형 설정 하나의 군의."""
@@ -150,6 +154,10 @@ class Gungi:
         if ply < 0:
             raise ValueError(f"ply 는 0 이상이다: {ply}")
         side = SIDES[Player(turn_tokens[1])]
+        # 둘 차례인 쪽의 帥 는 방금 잡혔을 수 있지만, 방금 둔 쪽의 帥 는 반드시 남아 있다.
+        mover = side.opponent
+        if not any(Piece(PieceType.MARSHAL, mover) in tower for tower in board):
+            raise ValueError(f"방금 둔 {PLAYERS[mover].value} 의 帥 가 판에 없다")
         return GungiPosition(Position(board=tuple(board), side=side, ply=ply))
 
     def _render_tower(self, tower: Tower) -> str:
@@ -170,6 +178,8 @@ class Gungi:
             if len(name) != 2 or name[1] not in KINDS_BY_SYMBOL:
                 raise ValueError(f"말 표기가 '▲帥' 꼴이 아니다: {name!r}")
             pieces.append(Piece(KINDS_BY_SYMBOL[name[1]], SIDES[Player(name[0])]))
+        if any(piece.kind is PieceType.MARSHAL for piece in pieces[:-1]):
+            raise ValueError(f"帥 위에는 말을 쌓을 수 없다: {text!r}")
         return tuple(pieces)
 
     def legal_moves(self, position: GungiPosition) -> tuple[GungiMove, ...]:
@@ -241,6 +251,16 @@ class Gungi:
 
     def render_move(self, move: GungiMove) -> str:
         return f"{self._render_square(move.source)}-{self._render_square(move.target)}"
+
+    def render_log_move(self, position: GungiPosition, move: GungiMove) -> str:
+        """로그에 쓰는 표기. 수 표기에 잡기면 `x` 를 덧붙인다. 합법수가 아니면 `ValueError` 다.
+
+        `parse_move` 는 이 표기를 읽지 않는다.
+        """
+        after = self.apply_move(position, move)
+        # 말이 줄었으면 잡기다. 쌓기는 말을 옮길 뿐이라 이 판정에 걸리지 않는다.
+        captured = _piece_count(after) < _piece_count(position)
+        return self.render_move(move) + ("x" if captured else "")
 
     def parse_move(self, text: str) -> GungiMove:
         match = MOVE_PATTERN.fullmatch(text.strip())
