@@ -13,7 +13,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from ai.random_play import play_random_episode
-from games.base import Outcome
+from games.base import Outcome, Player
 from games.mini_gungi import (
     MARSHAL_ONLY,
     MINI_GUNGI,
@@ -589,3 +589,17 @@ def test_a_finished_game_says_why_it_ended(
     before = play(game, game.initial_position(), *moves[:-1])
     assert game.end_reason(before) is None
     assert game.end_reason(play(game, before, moves[-1])) is reason
+
+
+def test_a_tower_is_listed_from_the_bottom_with_each_owner() -> None:
+    game = Gungi(NANO_GUNGI)
+    position = game.parse("""     a       b       c
+ 4   .      ▽帥      .
+ 3   .       .       .
+ 2 ▽兵/▲大   .       .
+ 1   .      ▲帥      .
+차례: ▲   ply: 0
+""")
+    a2 = game.parse_move("a2-a2").source
+    assert game.tower(position, a2) == ((Player.FIRST, "大"), (Player.SECOND, "兵"))
+    assert game.tower(position, 0) == ()

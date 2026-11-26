@@ -235,3 +235,13 @@ def test_allowed_imports_pass(tmp_path: Path) -> None:
 
 def test_an_empty_ai_package_passes(tmp_path: Path) -> None:
     assert violations(plant(tmp_path, {}), "ai") == []
+
+
+@pytest.mark.parametrize("forbidden", ["engine", "ai"])
+def test_ui_does_not_import_the_engine_or_the_ai_directly(forbidden: str) -> None:
+    """화면은 규칙을 `Game` 에 묻고(그 어댑터가 `engine/` 을 쓰는 것은 괜찮다) AI 는 주입받는다."""
+    files = source_files(REPO_ROOT)
+    modules = [name for name in files if name.split(".")[0] == "ui"]
+    assert "ui.app" in modules
+    # `imported_names` 는 직접 import 만 낸다.
+    assert [m for m in modules if forbidden in set(imported_names(m, files))] == []

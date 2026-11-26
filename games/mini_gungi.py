@@ -28,6 +28,7 @@ __all__ = [
     "GungiPosition",
     "PieceType",
     "Placement",
+    "TowerView",
     "VariantConfig",
 ]
 
@@ -82,6 +83,9 @@ MOVE_PATTERN = re.compile(f"{SQUARE_PATTERN}-{SQUARE_PATTERN}({re.escape(STACK_M
 PLANE_KINDS = (PieceType.MARSHAL, PieceType.GENERAL, PieceType.LANCE, PieceType.PAWN)
 PLANE_TIERS = 2
 PLANE_COUNT = 2 * len(PLANE_KINDS) * PLANE_TIERS + 2
+
+# 화면에 보이는 탑. 아래(1단)부터 (주인, 말 글자) 다.
+TowerView = tuple[tuple[Player, str], ...]
 
 # 렌더의 열 간격과 첫 열의 중심 (화면 폭 기준, 한자는 두 칸이다).
 CELL_PITCH = 8
@@ -207,6 +211,16 @@ class Gungi:
             raise ValueError(f"帥 위에는 말을 쌓을 수 없다: {text!r}")
         return tuple(pieces)
 
+    def tower(self, position: GungiPosition, square: int) -> TowerView:
+        """`square` 칸의 탑을 아래(1단)부터, (주인, 말 글자)로. 화면용이며 `Game` 에는 없다.
+
+        칸 번호는 `GungiMove` 의 `source`·`target` 과 같다 — `row * width + column`.
+        """
+        return tuple(
+            (PLAYERS[piece.owner], SYMBOLS[piece.kind])
+            for piece in position.engine_position.board[square]
+        )
+
     def legal_moves(self, position: GungiPosition) -> tuple[GungiMove, ...]:
         return self._engine.legal_moves(position.engine_position)
 
@@ -298,7 +312,7 @@ class Gungi:
         return position.engine_position.board_key
 
     def render_move(self, move: GungiMove) -> str:
-        squares = f"{self._render_square(move.source)}-{self._render_square(move.target)}"
+        squares = f"{self.render_square(move.source)}-{self.render_square(move.target)}"
         return squares + (STACK_MARK if move.stack else "")
 
     def render_log_move(self, position: GungiPosition, move: GungiMove) -> str:
@@ -322,7 +336,8 @@ class Gungi:
             stack=mark == STACK_MARK,
         )
 
-    def _render_square(self, square: int) -> str:
+    def render_square(self, square: int) -> str:
+        """칸 이름. `a1` 꼴이다."""
         row, column = divmod(square, self._config.width)
         return f"{COLUMNS[column]}{row + 1}"
 
