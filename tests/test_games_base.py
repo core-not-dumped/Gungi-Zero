@@ -1,12 +1,16 @@
 """`games.base` 자체의 작은 규칙들과, 틱택토가 프로토콜에 구조적으로 맞는지의 타입 수준 확인."""
 
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from games.base import Game, Outcome, Player
 from games.mini_gungi import MARSHAL_ONLY, Gungi, GungiMove, GungiPosition
 from games.tictactoe import TicTacToe, TicTacToeMove, TicTacToePosition
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_tictactoe_satisfies_the_game_protocol() -> None:
@@ -49,8 +53,12 @@ def test_the_game_holds_no_state() -> None:
 
 def test_nothing_in_games_or_ai_pulls_in_torch() -> None:
     """경계를 넘는 표현은 ndarray 다 (ADR-0001). 의존 방향은 `test_import_boundaries.py` 가 본다."""
-    import ai.random_play  # noqa: F401
-    import games.mini_gungi
-    import games.tictactoe  # noqa: F401
-
-    assert "torch" not in sys.modules
+    # `sys.modules` 는 프로세스 전역이다. 다른 테스트가 import 한 torch 가 보이지 않게 새로 띄운다.
+    script = (
+        "import sys, ai.random_play, games.mini_gungi, games.tictactoe\n"
+        "sys.exit('torch was imported' if 'torch' in sys.modules else 0)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=REPO_ROOT, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
