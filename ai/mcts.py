@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Generic
 
@@ -19,8 +20,18 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
+from ai.episode import value_for
 from ai.network import Network, evaluate
 from games.base import Game, MoveT, PositionT
+
+DEFAULT_C_PUCT = 1.25
+
+
+def canonical_action_indices(
+    game: Game[PositionT, MoveT], position: PositionT, moves: Sequence[MoveT]
+) -> list[int]:
+    """원래 국면 `position` 의 `moves` 를 정규형 프레임의 행동 인덱스로. 같은 순서다."""
+    return [game.to_canonical_action_index(position, game.action_index(move)) for move in moves]
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +92,7 @@ class MCTS(Generic[PositionT, MoveT]):
         network: Network,
         *,
         simulations: int,
-        c_puct: float = 1.25,
+        c_puct: float = DEFAULT_C_PUCT,
         root_noise: RootNoise | None = None,
         seed: int | None = None,
         device: torch.device | str = "cpu",
@@ -137,27 +148,18 @@ class MCTS(Generic[PositionT, MoveT]):
         game = self._game
         outcome = game.outcome(node.position)
         if outcome is not None:
-            if outcome.winner is None:
-                node.terminal_value = 0.0
-            else:
-                node.terminal_value = 1.0 if outcome.winner is node.position.player else -1.0
+            node.terminal_value = value_for(outcome, node.position.player)
             return node.terminal_value
 
         node.moves = game.legal_moves(node.position)
         node.children = [None] * len(node.moves)
         logits, value = evaluate(self._network, game.encode(node.position), self._device)
-        legal = logits[self._canonical_indices(node)].astype(np.float64)
+        indices = canonical_action_indices(game, node.position, node.moves)
+        legal = logits[indices].astype(np.float64)
         # 합법수만의 softmax. 가장 큰 로짓을 빼 넘치지 않게 한다.
         weights = np.exp(legal - legal.max())
         node.priors = weights / weights.sum()
         return value
-
-    def _canonical_indices(self, node: _Node[PositionT, MoveT]) -> list[int]:
-        game = self._game
-        return [
-            game.to_canonical_action_index(node.position, game.action_index(move))
-            for move in node.moves
-        ]
 
     def _add_noise(self, root: _Node[PositionT, MoveT], noise: RootNoise) -> None:
         sample = self._rng.dirichlet([noise.alpha] * len(root.moves))
@@ -186,7 +188,8 @@ class MCTS(Generic[PositionT, MoveT]):
     def _result(self, root: _Node[PositionT, MoveT]) -> SearchResult[MoveT]:
         visits = tuple(0 if child is None else child.visits for child in root.children)
         policy = np.zeros(self._game.action_space_size, dtype=np.float32)
-        policy[self._canonical_indices(root)] = np.asarray(visits, dtype=np.float32) / sum(visits)
+        indices = canonical_action_indices(self._game, root.position, root.moves)
+        policy[indices] = np.asarray(visits, dtype=np.float32) / sum(visits)
         return SearchResult(root.moves, visits, policy)
 
 

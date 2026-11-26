@@ -21,6 +21,13 @@ class Episode(Generic[PositionT, MoveT]):
     outcome: Outcome
 
 
+def value_for(outcome: Outcome, player: Player) -> float:
+    """`player` 시점의 결과. 승 +1, 무 0, 패 -1."""
+    if outcome.winner is None:
+        return 0.0
+    return 1.0 if outcome.winner is player else -1.0
+
+
 def play_episode(
     game: Game[PositionT, MoveT],
     first: AI[PositionT, MoveT],
