@@ -6,6 +6,7 @@ requires-python = ">=3.11,<3.12"
 dependencies = [
     "numpy>=2.1",
     "pygame>=2.6",
+    "torch>=2.15",
 ]
 
 [dependency-groups]
@@ -20,6 +21,24 @@ dev = [
 # repository root, not under src/. Nothing is installed, so no build backend.
 [tool.uv]
 package = false
+
+# torch 는 플랫폼마다 받는 곳이 다르다. 리눅스(CI)는 수 GB 의 CUDA 휠을 받지 않게 CPU 판을,
+# Windows(로컬)는 GPU 를 쓰는 CUDA 판을 받는다. 그 밖의 플랫폼은 PyPI 를 쓴다.
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+    { index = "pytorch-cuda", marker = "sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

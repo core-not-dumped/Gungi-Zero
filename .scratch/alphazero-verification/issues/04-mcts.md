@@ -6,13 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] torch 의존성: uv 플랫폼 마커로 리눅스(CI)는 CPU 인덱스, Windows(로컬)는 CUDA 인덱스. CI 의 잠금 동기화가 통과한다
-- [ ] `Network` 프로토콜: `(B, C, H, W)` → 정책 로짓 `(B, A)`, 가치 `(B,) ∈ [−1, 1]`. 생성자는 게임의 `tensor_shape`·`action_space_size` 와 구조 설정만 받는다. 시험용 신경망이 이것을 따른다
-- [ ] MCTS 는 원래 국면으로만 트리를 만들고 `canonical` 을 부르지 않는다. 가치는 둘 차례인 쪽 시점이고 한 단계마다 부호를 뒤집는다. 종료 노드는 `outcome` 으로 평가한다. 전치표가 없다
-- [ ] PUCT(c=1.25), 켜고 끌 수 있는 루트 Dirichlet 노이즈, temperature 에 따른 방문 수 기반 선택, 정규형 프레임의 방문 분포 반환
-- [ ] MCTS AI 가 `AI` 프로토콜을 따른다
-- [ ] 아래 네 시험 국면에서 정답을 고른다. 각 국면의 합법수 개수도 확인한다
-- [ ] 백업 부호를 뒤집은 MCTS 로 네 시험이 모두 실패하는지 테스트한다
+- [x] torch 의존성: uv 플랫폼 마커로 리눅스(CI)는 CPU 인덱스, Windows(로컬)는 CUDA 인덱스. CI 의 잠금 동기화가 통과한다
+- [x] `Network` 프로토콜: `(B, C, H, W)` → 정책 로짓 `(B, A)`, 가치 `(B,) ∈ [−1, 1]`. 생성자는 게임의 `tensor_shape`·`action_space_size` 와 구조 설정만 받는다. 시험용 신경망이 이것을 따른다
+- [x] MCTS 는 원래 국면으로만 트리를 만들고 `canonical` 을 부르지 않는다. 가치는 둘 차례인 쪽 시점이고 한 단계마다 부호를 뒤집는다. 종료 노드는 `outcome` 으로 평가한다. 전치표가 없다
+- [x] PUCT(c=1.25), 켜고 끌 수 있는 루트 Dirichlet 노이즈, temperature 에 따른 방문 수 기반 선택, 정규형 프레임의 방문 분포 반환
+- [x] MCTS AI 가 `AI` 프로토콜을 따른다
+- [x] 아래 네 시험 국면에서 정답을 고른다. 각 국면의 합법수 개수도 확인한다
+- [x] 백업 부호를 뒤집은 MCTS 로 네 시험이 모두 실패하는지 테스트한다
 
 ## 시험 국면
 
@@ -61,3 +61,12 @@
 ```
 
 spec: "MCTS", "신경망 프로토콜", "Testing Decisions / MCTS 시험 국면".
+
+## Comments
+
+- 결과(2026-11-27): 탐색은 `ai/mcts.py` (`MCTS`, `MCTSAI`, `RootNoise`), `Network` 프로토콜은 `ai/network.py`, 시험용 신경망은 `tests/stub_networks.py` 다. torch 2.15.0 이고 Windows 는 cu132, 리눅스는 cpu 인덱스다.
+- CI 의 잠금 동기화는 아직 CI 에서 돌지 않았다. 로컬의 `uv lock --check` 와 `uv sync --locked --dry-run --python-platform linux` 만 통과했다.
+- 시험의 탐색 횟수는 틱택토 50, 나노 2 는 100, **나노 1 은 400** 이다. 균등 신경망은 100회에서 나노 1 의 정답이 다른 6수와 최다 방문 동률이고, 114회부터 홀로 앞선다. 지는 수 하나에 상대의 응수가 14개까지 있고 방문하지 않은 수의 가치를 0 으로 보아, 帥 를 잡는 응수를 늦게 찾는다. 나노의 기본 탐색 횟수 100 (spec 의 하이퍼파라미터 표)은 09 에서 다시 볼 값이다.
+- 05 에서 쓸 것: `MCTS.search` 가 돌려주는 `SearchResult.policy` 는 이미 정규형 행동 인덱스다.
+- 06 에서 할 것: `Network` 는 평가가 상태를 바꾸지 않는다고 가정한다. BatchNorm 이 있는 ResNet 은 평가 모드로 넘겨야 한다.
+
