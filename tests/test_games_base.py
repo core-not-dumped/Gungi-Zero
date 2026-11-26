@@ -21,7 +21,7 @@ def test_tictactoe_satisfies_the_game_protocol() -> None:
 
 def test_gungi_satisfies_the_game_protocol() -> None:
     game: Game[GungiPosition, GungiMove] = Gungi(MARSHAL_ONLY)
-    assert game.action_space_size == 625
+    assert game.action_space_size == 1250
 
 
 @pytest.mark.parametrize("player", list(Player))

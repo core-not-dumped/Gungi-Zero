@@ -16,7 +16,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from games.base import Game, Outcome, Player
-from games.mini_gungi import MARSHAL_ONLY, SINGLE_TIER, Gungi
+from games.mini_gungi import MARSHAL_ONLY, MINI_GUNGI, SINGLE_TIER, Gungi
 from games.tictactoe import TicTacToe
 
 # 새 게임은 여기에 더한다. 적합성 스위트 전체가 그 게임에도 돈다.
@@ -24,6 +24,7 @@ GAMES: list[Any] = [
     pytest.param(TicTacToe(), id="tictactoe"),
     pytest.param(Gungi(MARSHAL_ONLY), id="gungi-marshal-only"),
     pytest.param(Gungi(SINGLE_TIER), id="gungi-single-tier"),
+    pytest.param(Gungi(MINI_GUNGI), id="gungi-mini"),
 ]
 
 # 합법수 목록에서 몇 번째를 고를지의 나열. 게임마다 분기 수가 달라 나머지로 접는다.
@@ -52,7 +53,7 @@ def test_the_legal_action_mask_says_exactly_what_apply_move_accepts(
 
     합법수 목록으로 기대값을 만들면 마스크를 만든 식을 그대로 다시 적는 셈이어서 틀릴 수가
     없다. 그래서 행동 공간을 전부 쓸어 `apply_move` 가 받아들이는지로 판정한다. 쓸기는
-    마지막 국면에만 한다 — 625 칸짜리 군의에서는 국면마다 쓸면 너무 느리다.
+    마지막 국면에만 한다 — 1250 칸짜리 군의에서는 국면마다 쓸면 너무 느리다.
     """
     reached = walk(game, picks)
     for position in reached:

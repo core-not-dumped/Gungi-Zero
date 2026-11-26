@@ -1,6 +1,7 @@
 """군의 fixture 테스트. `games.base.Game` 으로만 게임을 보고 판은 텍스트 렌더로 읽는다."""
 
 from collections import Counter
+from collections.abc import Iterator
 from dataclasses import replace
 
 import numpy as np
@@ -12,8 +13,10 @@ from ai.random_play import play_random_episode
 from games.base import Outcome
 from games.mini_gungi import (
     MARSHAL_ONLY,
+    MINI_GUNGI,
     SINGLE_TIER,
     Gungi,
+    GungiMove,
     GungiPosition,
     PieceType,
     Placement,
@@ -31,9 +34,6 @@ SPEC_BOARD = """\
 차례: ▲   ply: 1
 """
 
-# 판을 놓고 읽고 쓰는 데 쓴다. 쌓기가 아직 없어(07 번 티켓) 수를 낼 때는 `SINGLE_TIER` 를 쓴다.
-FOUR_KINDS = replace(SINGLE_TIER, max_tier=2)
-
 
 def notation(game: Gungi, position: GungiPosition) -> set[str]:
     return {game.render_move(move) for move in game.legal_moves(position)}
@@ -46,19 +46,19 @@ def play(game: Gungi, position: GungiPosition, *moves: str) -> GungiPosition:
 
 
 def test_the_initial_position_puts_the_second_player_on_the_rotated_setup() -> None:
-    game = Gungi(FOUR_KINDS)
+    game = Gungi(MINI_GUNGI)
     assert game.render(game.initial_position()) == SPEC_BOARD.replace("ply: 1", "ply: 0")
 
 
 def test_parse_reads_the_rendered_format_back() -> None:
-    game = Gungi(FOUR_KINDS)
+    game = Gungi(MINI_GUNGI)
     position = game.parse(SPEC_BOARD)
     assert game.render(position) == SPEC_BOARD
     assert position.ply == 1
 
 
 def test_a_tower_is_written_top_first_and_round_trips() -> None:
-    game = Gungi(FOUR_KINDS)
+    game = Gungi(MINI_GUNGI)
     text = """\
      a       b       c       d       e
  5 ▽兵/▲大 ▽兵/▲槍  ▽帥      .       .
@@ -111,7 +111,7 @@ def test_a_board_that_cannot_exist_is_refused(row_one: str) -> None:
     ],
 )
 def test_a_board_that_no_game_can_reach_is_refused(row_five: str, row_one: str) -> None:
-    game = Gungi(FOUR_KINDS)
+    game = Gungi(MINI_GUNGI)
     with pytest.raises(ValueError):
         game.parse(f"""\
      a       b       c       d       e
@@ -125,7 +125,7 @@ def test_a_board_that_no_game_can_reach_is_refused(row_five: str, row_one: str) 
 
 
 def test_a_marshal_on_top_of_a_tower_and_a_finished_board_are_accepted() -> None:
-    game = Gungi(FOUR_KINDS)
+    game = Gungi(MINI_GUNGI)
     # 둘 차례인 ▲ 의 帥 가 잡힌 판은 끝난 대국의 정상적인 모습이다.
     position = game.parse("""\
      a       b       c       d       e
@@ -444,7 +444,9 @@ def test_a_random_episode_ends(seed: int) -> None:
 def test_moves_are_written_from_square_to_square() -> None:
     game = Gungi(MARSHAL_ONLY)
     assert game.render_move(game.parse_move("b1-c3")) == "b1-c3"
-    for text in ("b1c3", "f1-c3", "b6-c3", "b0-c3", "b1-c3x", "b01-c3", "b1-c3-d4", ""):
+    assert game.render_move(game.parse_move("b1-c3^")) == "b1-c3^"
+    bad = ("b1c3", "f1-c3", "b6-c3", "b0-c3", "b1-c3x", "b01-c3", "b1-c3-d4", "")
+    for text in (*bad, "b1^-c3", "b1-c3^^", "b1-c3^x"):
         with pytest.raises(ValueError):
             game.parse_move(text)
 
@@ -468,19 +470,39 @@ def test_the_log_notation_marks_only_captures() -> None:
     assert game.render_move(capture) == "c2-c3"
 
 
-def test_the_action_space_is_source_square_times_target_square() -> None:
+def test_the_action_space_is_stacking_times_source_square_times_target_square() -> None:
     game = Gungi(MARSHAL_ONLY)
-    assert game.action_space_size == 625
-    # 칸 번호는 a1=0, b1=1, ... e5=24 이고 인덱스는 출발 * 25 + 도착이다. b1-c3 = 1*25+12.
+    assert game.action_space_size == 1250
+    # 칸 번호는 a1=0, b1=1, ... e5=24 이고 인덱스는 쌓기 * 625 + 출발 * 25 + 도착이다.
+    # b1-c3 = 1*25+12.
     assert game.action_index(game.parse_move("b1-c3")) == 37
+    assert game.action_index(game.parse_move("b1-c3^")) == 625 + 37
     assert game.render_move(game.move_from_action_index(624)) == "e5-e5"
-    for index in (-1, 625):
+    assert game.render_move(game.move_from_action_index(1249)) == "e5-e5^"
+    for index in (-1, 1250):
         with pytest.raises(ValueError):
             game.move_from_action_index(index)
 
 
+def test_every_action_index_round_trips_through_the_move_notation() -> None:
+    game = Gungi(MINI_GUNGI)
+    for index in range(game.action_space_size):
+        text = game.render_move(game.move_from_action_index(index))
+        assert game.action_index(game.parse_move(text)) == index
+
+
+def test_the_canonical_form_keeps_the_stacking_choice() -> None:
+    game = Gungi(MINI_GUNGI)
+    position = game.parse(SPEC_BOARD.replace("차례: ▲", "차례: ▽"))
+    for text, rotated in (("b4-b3", "d2-d3"), ("b4-b3^", "d2-d3^")):
+        index = game.action_index(game.parse_move(text))
+        carried = game.to_canonical_action_index(position, index)
+        assert game.render_move(game.move_from_action_index(carried)) == rotated
+        assert game.from_canonical_action_index(position, carried) == index
+
+
 def test_the_canonical_form_rotates_the_board_and_swaps_the_colours() -> None:
-    game = Gungi(FOUR_KINDS)
+    game = Gungi(MINI_GUNGI)
     position = game.parse("""\
      a       b       c       d       e
  5   .       .      ▽帥      .       .
@@ -509,7 +531,7 @@ def test_the_canonical_form_rotates_the_board_and_swaps_the_colours() -> None:
 
 
 def test_the_tensor_has_one_plane_per_owner_kind_and_tier() -> None:
-    game = Gungi(FOUR_KINDS)
+    game = Gungi(MINI_GUNGI)
     position = game.parse("""\
      a       b       c       d       e
  5   .       .      ▽帥      .       .
@@ -577,7 +599,7 @@ def test_the_board_size_comes_from_the_variant() -> None:
             repetition_limit=3,
         )
     )
-    assert game.action_space_size == 144
+    assert game.action_space_size == 288
     assert game.tensor_shape == (18, 4, 3)
     assert notation(game, game.initial_position()) == {"a1-b1", "a1-a2", "a1-b2"}
 
@@ -585,30 +607,6 @@ def test_the_board_size_comes_from_the_variant() -> None:
 def test_a_variant_with_more_tiers_than_the_planes_hold_is_refused() -> None:
     with pytest.raises(ValueError):
         Gungi(replace(MARSHAL_ONLY, max_tier=3))
-
-
-@pytest.mark.parametrize(
-    "row_two",
-    [
-        # 07 번 티켓 전에는 탑이 있거나 아군 위에 쌓을 수 있는 판에서 수를 낼 수 없다.
-        " 2   .    ▲兵/▽大    .       .       .",
-        " 2   .    ▽兵/▽大    .       .       .",
-        " 2  ▲兵     ▲大      .       .       .",
-    ],
-)
-def test_rules_that_do_not_exist_yet_fail_loudly(row_two: str) -> None:
-    game = Gungi(FOUR_KINDS)
-    position = game.parse(f"""\
-     a       b       c       d       e
- 5   .       .      ▽帥      .       .
- 4   .       .       .       .       .
- 3   .       .       .       .       .
-{row_two}
- 1   .       .      ▲帥      .       .
-차례: ▲   ply: 0
-""")
-    with pytest.raises(NotImplementedError):
-        game.legal_moves(position)
 
 
 # ── 말 4종의 1단 이동표와 막힘 ──
@@ -845,40 +843,381 @@ def test_a_lance_slides_forward_and_does_not_jump(board: str, expected: set[str]
     assert notation(game, game.parse(board)) == expected
 
 
-def pieces_by_square(game: Gungi, position: GungiPosition) -> dict[str, str]:
-    """렌더에서 읽은 `칸 → 말`. 빈칸은 빠진다."""
+def towers_by_square(game: Gungi, position: GungiPosition) -> dict[str, list[str]]:
+    """렌더에서 읽은 `칸 → 탑`. 탑은 맨 위부터이고 빈칸은 빠진다."""
     header, *rows, _turn = game.render(position).splitlines()
     columns = header.split()
-    squares: dict[str, str] = {}
+    squares: dict[str, list[str]] = {}
     for line in rows:
         row, *cells = line.split()
-        squares.update(
-            {column + row: cell for column, cell in zip(columns, cells, strict=True) if cell != "."}
-        )
+        for column, cell in zip(columns, cells, strict=True):
+            if cell != ".":
+                squares[column + row] = cell.split("/")
     return squares
 
 
-@given(picks=st.lists(st.integers(min_value=0, max_value=2**20), max_size=60))
-def test_pieces_only_leave_the_board_by_being_captured(picks: list[int]) -> None:
-    game = Gungi(SINGLE_TIER)
+def pieces(towers: dict[str, list[str]]) -> Counter[str]:
+    return Counter(piece for tower in towers.values() for piece in tower)
+
+
+def random_walk(
+    game: Gungi, picks: list[int]
+) -> Iterator[tuple[GungiPosition, GungiMove, GungiPosition]]:
+    """`picks` 를 따라 두며 `(두기 전 국면, 수, 둔 뒤 국면)` 을 낸다."""
     position = game.initial_position()
     for pick in picks:
         moves = game.legal_moves(position)
         if not moves:
-            break
+            return
         move = moves[pick % len(moves)]
-        before = pieces_by_square(game, position)
-        captured = before.get(game.render_move(move).split("-")[1])
-        position = game.apply_move(position, move)
-        after = pieces_by_square(game, position)
-        assert Counter(after.values()) == Counter(before.values()) - Counter(
-            [captured] if captured else []
-        )
-        # 잡히는 것은 언제나 상대 말이다. 수를 둔 뒤의 차례가 그 상대다.
-        assert captured is None or captured.startswith(position.player.value)
+        after = game.apply_move(position, move)
+        yield position, move, after
+        position = after
 
 
+@pytest.mark.parametrize("config", [SINGLE_TIER, MINI_GUNGI], ids=["single-tier", "mini"])
+@given(picks=st.lists(st.integers(min_value=0, max_value=2**20), max_size=60))
+def test_pieces_only_leave_the_board_by_being_captured(
+    config: VariantConfig, picks: list[int]
+) -> None:
+    game = Gungi(config)
+    for position, move, after in random_walk(game, picks):
+        before = towers_by_square(game, position)
+        text = game.render_move(move)
+        target = before.get(text.removesuffix("^").split("-")[1], [])
+        # 수를 둔 뒤의 차례가 상대다. 잡으면 도착 칸의 상대 말이 전부 사라지고, 쌓으면 그대로다.
+        opponent = after.player.value
+        captured = [] if text.endswith("^") else [p for p in target if p.startswith(opponent)]
+        assert pieces(towers_by_square(game, after)) == pieces(before) - Counter(captured)
+
+
+@pytest.mark.parametrize("config", [SINGLE_TIER, MINI_GUNGI], ids=["single-tier", "mini"])
+@given(picks=st.lists(st.integers(min_value=0, max_value=2**20), max_size=60))
+def test_towers_stay_within_the_tier_limit_with_any_marshal_on_top(
+    config: VariantConfig, picks: list[int]
+) -> None:
+    game = Gungi(config)
+    for _, _, after in random_walk(game, picks):
+        for tower in towers_by_square(game, after).values():
+            assert len(tower) <= config.max_tier
+            assert not any(piece.endswith("帥") for piece in tower[1:])
+
+
+@pytest.mark.parametrize("config", [SINGLE_TIER, MINI_GUNGI], ids=["single-tier", "mini"])
 @pytest.mark.parametrize("seed", range(50))
-def test_a_random_episode_with_all_four_kinds_ends(seed: int) -> None:
-    episode = play_random_episode(Gungi(SINGLE_TIER), seed)
-    assert len(episode.moves) <= SINGLE_TIER.move_limit
+def test_a_random_episode_with_all_four_kinds_ends(config: VariantConfig, seed: int) -> None:
+    episode = play_random_episode(Gungi(config), seed)
+    assert len(episode.moves) <= config.move_limit
+
+
+# ── 쌓기와 단 ──
+# 판 그림의 탑은 `상단/하단` 이다.
+
+
+def board(turn: str, *rows: str) -> str:
+    """5 행부터 1 행까지의 칸을 받아 텍스트 판 표기를 만든다."""
+    lines = ["     a       b       c       d       e"]
+    lines += [f" {5 - index}  {row}" for index, row in enumerate(rows)]
+    return "\n".join([*lines, f"차례: {turn}   ply: 4"]) + "\n"
+
+
+# 帥 a1 의 세 수. 아래 fixture 대부분에서 a1 의 ▲帥 는 판의 일에 끼지 않는다.
+CORNER_MARSHAL = ("a1-a2", "a1-b1", "a1-b2")
+
+
+def moves_on(text: str) -> set[str]:
+    game = Gungi(MINI_GUNGI)
+    return notation(game, game.parse(text))
+
+
+def towers_after(text: str, move: str) -> dict[str, list[str]]:
+    game = Gungi(MINI_GUNGI)
+    return towers_by_square(game, play(game, game.parse(text), move))
+
+
+# 쌓기: 적 칸에서는 잡기와 쌓기 중에 고른다.
+ENEMY_IN_FRONT = board(
+    "▲",
+    " .       .       .       .      ▽帥",
+    " .       .       .       .       .",
+    " .       .      ▽兵      .       .",
+    " .       .      ▲兵      .       .",
+    "▲帥      .       .       .       .",
+)
+
+
+def test_an_enemy_topped_square_can_be_captured_or_stacked_on() -> None:
+    assert moves_on(ENEMY_IN_FRONT) == {"c2-c3", "c2-c3^", "c2-c1", *CORNER_MARSHAL}
+
+
+def test_stacking_on_an_enemy_keeps_it_underneath_and_capturing_removes_it() -> None:
+    assert towers_after(ENEMY_IN_FRONT, "c2-c3^")["c3"] == ["▲兵", "▽兵"]
+    assert towers_after(ENEMY_IN_FRONT, "c2-c3")["c3"] == ["▲兵"]
+    game = Gungi(MINI_GUNGI)
+    position = game.parse(ENEMY_IN_FRONT)
+    # x 는 잡기에만 붙는다.
+    assert game.render_log_move(position, game.parse_move("c2-c3")) == "c2-c3x"
+    assert game.render_log_move(position, game.parse_move("c2-c3^")) == "c2-c3^"
+
+
+def test_a_friendly_square_can_only_be_stacked_on() -> None:
+    text = board(
+        "▲",
+        " .       .       .       .      ▽帥",
+        " .       .       .       .       .",
+        " .       .      ▲兵      .       .",
+        " .       .      ▲兵      .       .",
+        "▲帥      .       .       .       .",
+    )
+    assert moves_on(text) == {"c2-c3^", "c2-c1", "c3-c4", "c3-c2^", *CORNER_MARSHAL}
+    assert towers_after(text, "c2-c3^")["c3"] == ["▲兵", "▲兵"]
+
+
+def test_a_higher_piece_can_stack_down_onto_a_friend() -> None:
+    text = board(
+        "▲",
+        " .       .       .       .      ▽帥",
+        " .       .       .       .       .",
+        " .       .      ▲兵      .       .",
+        " .       .    ▲兵/▲大   .       .",
+        "▲帥      .       .       .       .",
+    )
+    # c3 의 兵 (1단) 은 뒤의 2단 탑에 못 올라간다.
+    assert moves_on(text) == {"c2-c3^", "c2-c1", "c3-c4", *CORNER_MARSHAL}
+
+
+# 단수 제약
+@pytest.mark.parametrize("tower", ["▽兵/▽槍", "▽兵/▲槍"])
+def test_a_higher_tower_can_be_neither_captured_nor_stacked_on(tower: str) -> None:
+    text = board(
+        "▲",
+        " .       .       .       .      ▽帥",
+        " .       .       .       .       .",
+        f" .       .    {tower}   .       .",
+        " .       .      ▲兵      .       .",
+        "▲帥      .       .       .       .",
+    )
+    assert moves_on(text) == {"c2-c1", *CORNER_MARSHAL}
+
+
+def test_a_full_tower_can_be_captured_from_the_same_tier_but_not_stacked_on() -> None:
+    text = board(
+        "▲",
+        " .       .       .       .      ▽帥",
+        " .       .       .       .       .",
+        " .       .    ▽兵/▽槍   .       .",
+        " .       .    ▲兵/▲大   .       .",
+        "▲帥      .       .       .       .",
+    )
+    assert moves_on(text) == {"c2-c3", "c2-c1", *CORNER_MARSHAL}
+
+
+def test_a_tower_with_a_friend_on_top_cannot_be_captured_for_the_enemy_underneath() -> None:
+    text = board(
+        "▲",
+        " .       .       .       .      ▽帥",
+        " .       .       .       .       .",
+        " .       .    ▲兵/▽兵   .       .",
+        " .       .    ▲兵/▲大   .       .",
+        "▲帥      .       .       .       .",
+    )
+    # 두 ▲兵 사이는 서로 막힌다 — 상대 탑이 2단이라 쌓을 자리가 없다.
+    assert moves_on(text) == {"c3-c4", "c3-c5", "c2-c1", *CORNER_MARSHAL}
+
+
+# 사거리 증가: 2단은 유한 방향이 한 칸 늘고, 무제한 방향은 그대로다.
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        pytest.param(
+            (
+                " .      ▽帥      .       .       .",
+                " .       .       .       .       .",
+                " .       .    ▲兵/▲大   .       .",
+                " .       .       .       .       .",
+                "▲帥      .       .       .       .",
+            ),
+            {"c3-c4", "c3-c5", "c3-c2", "c3-c1", *CORNER_MARSHAL},
+            id="pawn",
+        ),
+        pytest.param(
+            (
+                " .      ▽帥      .       .       .",
+                " .       .       .       .       .",
+                " .       .    ▲槍/▲兵   .       .",
+                " .       .       .       .       .",
+                "▲帥      .       .       .       .",
+            ),
+            {
+                # 전방 3 칸 중 판 안의 2 칸
+                *("c3-c4", "c3-c5"),
+                # 전방대각 2
+                *("c3-b4", "c3-a5", "c3-d4", "c3-e5"),
+                # 후방 2
+                *("c3-c2", "c3-c1"),
+                *CORNER_MARSHAL,
+            },
+            id="lance-back-and-diagonal",
+        ),
+        pytest.param(
+            (
+                " .      ▽帥      .       .       .",
+                " .       .       .       .       .",
+                " .       .       .       .       .",
+                " .       .    ▲槍/▲兵   .       .",
+                "▲帥      .       .       .       .",
+            ),
+            {
+                # 전방 3
+                *("c2-c3", "c2-c4", "c2-c5"),
+                # 전방대각 2
+                *("c2-b3", "c2-a4", "c2-d3", "c2-e4"),
+                # 후방 2 칸 중 판 안의 1 칸
+                "c2-c1",
+                *CORNER_MARSHAL,
+            },
+            id="lance-forward",
+        ),
+        pytest.param(
+            (
+                " .      ▽帥      .       .       .",
+                " .       .       .       .       .",
+                " .       .    ▲大/▲兵   .       .",
+                " .       .       .       .       .",
+                " .      ▲帥      .       .       .",
+            ),
+            {
+                # 직선은 그대로 무제한
+                *("c3-c4", "c3-c5", "c3-c2", "c3-c1", "c3-b3", "c3-a3", "c3-d3", "c3-e3"),
+                # 대각 2
+                *("c3-b4", "c3-a5", "c3-d4", "c3-e5", "c3-b2", "c3-a1", "c3-d2", "c3-e1"),
+                # 帥
+                *("b1-a1", "b1-c1", "b1-a2", "b1-b2", "b1-c2"),
+            },
+            id="general",
+        ),
+        # 帥 는 帥ツケ 금지 때문에 실제 대국에서는 2단에 오르지 못한다. 이동표만 확인한다.
+        pytest.param(
+            (
+                " .      ▽帥      .       .       .",
+                " .       .       .       .       .",
+                " .       .    ▲帥/▲兵   .       .",
+                " .       .       .       .       .",
+                " .       .       .       .       .",
+            ),
+            {
+                *("c3-c4", "c3-c5", "c3-c2", "c3-c1", "c3-b3", "c3-a3", "c3-d3", "c3-e3"),
+                *("c3-b4", "c3-a5", "c3-d4", "c3-e5", "c3-b2", "c3-a1", "c3-d2", "c3-e1"),
+            },
+            id="marshal",
+        ),
+    ],
+)
+def test_the_second_tier_adds_one_square_to_limited_directions(
+    rows: tuple[str, ...], expected: set[str]
+) -> None:
+    assert moves_on(board("▲", *rows)) == expected
+
+
+def test_a_second_tier_piece_is_still_blocked_by_a_first_tier_piece() -> None:
+    text = board(
+        "▲",
+        " .       .       .       .      ▽帥",
+        " .       .       .       .       .",
+        " .       .      ▽兵      .       .",
+        " .       .    ▲兵/▲大   .       .",
+        "▲帥      .       .       .       .",
+    )
+    assert moves_on(text) == {"c2-c3", "c2-c3^", "c2-c1", *CORNER_MARSHAL}
+
+
+def test_the_longer_reach_of_a_second_tier_lance_does_not_jump() -> None:
+    text = board(
+        "▲",
+        " .      ▽帥      .       .       .",
+        " .       .      ▽兵      .       .",
+        " .       .       .       .       .",
+        " .       .    ▲槍/▲兵   .       .",
+        "▲帥      .       .       .       .",
+    )
+    assert moves_on(text) == {
+        # 전방 3 칸 중 c4 에서 멈춘다.
+        *("c2-c3", "c2-c4", "c2-c4^"),
+        *("c2-b3", "c2-a4", "c2-d3", "c2-e4", "c2-c1"),
+        *CORNER_MARSHAL,
+    }
+
+
+# 맨 위만 이동
+def test_only_the_top_piece_moves_and_the_one_below_is_freed_when_it_leaves() -> None:
+    game = Gungi(MINI_GUNGI)
+    rows = (
+        " .       .       .       .      ▽帥",
+        " .       .       .       .       .",
+        " .       .    ▽兵/▲大   .       .",
+        " .       .       .       .       .",
+        "▲帥      .       .       .       .",
+    )
+    # ▲ 의 차례여도 탑 아래의 ▲大 는 얼어 있어 帥 만 움직인다.
+    assert moves_on(board("▲", *rows)) == set(CORNER_MARSHAL)
+
+    freed = play(game, game.parse(board("▽", *rows)), "c3-c4")
+    assert towers_by_square(game, freed)["c3"] == ["▲大"]
+    assert notation(game, freed) == {
+        # 위가 비킨 大 (1단). c4 의 적은 잡거나 쌓는다.
+        *("c3-c4", "c3-c4^", "c3-c2", "c3-c1", "c3-b3", "c3-a3", "c3-d3", "c3-e3"),
+        *("c3-b4", "c3-d4", "c3-b2", "c3-d2"),
+        *CORNER_MARSHAL,
+    }
+
+
+# 탑 잡기
+@pytest.mark.parametrize(
+    ("tower", "left"),
+    [
+        pytest.param("▽兵/▽槍", ["▲兵"], id="all-enemy"),
+        pytest.param("▽兵/▲槍", ["▲兵", "▲槍"], id="friend-underneath"),
+    ],
+)
+def test_capturing_a_tower_removes_every_enemy_piece_and_keeps_mine(
+    tower: str, left: list[str]
+) -> None:
+    text = board(
+        "▲",
+        " .       .       .       .      ▽帥",
+        " .       .       .       .       .",
+        f" .       .    {tower}   .       .",
+        " .       .    ▲兵/▲大   .       .",
+        "▲帥      .       .       .       .",
+    )
+    after = towers_after(text, "c2-c3")
+    assert after["c3"] == left
+    assert after["c2"] == ["▲大"]
+
+
+# 帥 위 금지: 누구도 帥 위에 올라가지 못한다.
+def test_nothing_can_be_stacked_on_either_marshal() -> None:
+    text = board(
+        "▲",
+        " .       .       .       .       .",
+        " .       .       .       .       .",
+        " .       .      ▽帥      .       .",
+        "▲兵      .      ▲兵      .       .",
+        "▲帥      .       .       .       .",
+    )
+    # c3 의 적 帥 는 잡기만 된다. a2 의 兵 은 뒤의 아군 帥 에 올라가지 못한다.
+    assert moves_on(text) == {"c2-c3", "c2-c1", "a2-a3", "a1-b1", "a1-b2"}
+
+
+# 帥ツケ 금지: 帥 자신은 아군 위에도 적 위에도 올라가지 못한다. 위의 규칙과 다른 규칙이다.
+def test_a_marshal_cannot_stack_on_anything() -> None:
+    text = board(
+        "▲",
+        " .       .       .       .      ▽帥",
+        " .       .       .       .       .",
+        " .       .       .       .       .",
+        "▲兵     ▽兵      .       .       .",
+        "▲帥      .       .       .       .",
+    )
+    # b2 의 적은 잡기만 되고, a2 의 아군으로는 갈 수 없다.
+    assert moves_on(text) == {"a1-b2", "a1-b1", "a2-a3"}

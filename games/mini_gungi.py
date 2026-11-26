@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Hashable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import final
 
 import numpy as np
@@ -20,6 +20,7 @@ from games.base import Outcome, Player
 
 __all__ = [
     "MARSHAL_ONLY",
+    "MINI_GUNGI",
     "SINGLE_TIER",
     "Gungi",
     "GungiMove",
@@ -39,11 +40,11 @@ MARSHAL_ONLY = VariantConfig(
     repetition_limit=3,
 )
 
-# 네 말을 모두 올리고 쌓기를 뺀 변형. 배치와 말 개수는 노브다 — 1단계 끝에 측정으로 확정한다.
-SINGLE_TIER = VariantConfig(
+# 미니 군의의 기본 설정. 배치와 말 개수는 노브다 — 1단계 끝에 측정으로 확정한다.
+MINI_GUNGI = VariantConfig(
     width=5,
     height=5,
-    max_tier=1,
+    max_tier=2,
     setup=(
         Placement(PieceType.GENERAL, column=1, row=0),
         Placement(PieceType.MARSHAL, column=2, row=0),
@@ -54,6 +55,9 @@ SINGLE_TIER = VariantConfig(
     move_limit=200,
     repetition_limit=3,
 )
+
+# 같은 배치에서 쌓기만 뺀 변형.
+SINGLE_TIER = replace(MINI_GUNGI, max_tier=1)
 
 EMPTY_CELL = "."
 TOWER_SEPARATOR = "/"
@@ -68,7 +72,9 @@ KINDS_BY_SYMBOL = {symbol: kind for kind, symbol in SYMBOLS.items()}
 PLAYERS = {Side.FIRST: Player.FIRST, Side.SECOND: Player.SECOND}
 SIDES = {player: side for side, player in PLAYERS.items()}
 
-MOVE_PATTERN = re.compile(r"([a-z])([1-9][0-9]*)-([a-z])([1-9][0-9]*)")
+STACK_MARK = "^"
+SQUARE_PATTERN = r"([a-z])([1-9][0-9]*)"
+MOVE_PATTERN = re.compile(f"{SQUARE_PATTERN}-{SQUARE_PATTERN}({re.escape(STACK_MARK)}?)")
 
 # 텐서 평면 = (내 말, 상대 말) * 말 종류 * 단. 그 뒤에 반복 횟수와 수 진행도가 한 장씩 온다.
 # 평면 번호는 신경망 가중치의 의미이므로 순서를 바꾸지 않는다.
@@ -216,15 +222,24 @@ class Gungi:
 
     @property
     def action_space_size(self) -> int:
+        """출발 칸 * 도착 칸 * 쌓기 여부 (ADR-0006)."""
+        return 2 * self._plane_size
+
+    @property
+    def _plane_size(self) -> int:
+        """쌓기 여부 하나에 해당하는 행동 인덱스의 개수. 출발 칸 * 도착 칸이다."""
         return self._config.square_count**2
 
     def action_index(self, move: GungiMove) -> int:
-        return move.source * self._config.square_count + move.target
+        squares = move.source * self._config.square_count + move.target
+        return move.stack * self._plane_size + squares
 
     def move_from_action_index(self, index: int) -> GungiMove:
         if not 0 <= index < self.action_space_size:
             raise ValueError(f"행동 공간 밖의 인덱스다: {index}")
-        return GungiMove(*divmod(index, self._config.square_count))
+        stack, squares = divmod(index, self._plane_size)
+        source, target = divmod(squares, self._config.square_count)
+        return GungiMove(source, target, stack=bool(stack))
 
     def legal_action_mask(self, position: GungiPosition) -> npt.NDArray[np.bool_]:
         mask = np.zeros(self.action_space_size, dtype=bool)
@@ -240,8 +255,10 @@ class Gungi:
     def to_canonical_action_index(self, position: GungiPosition, index: int) -> int:
         if position.player is Player.FIRST:
             return index
-        # 180° 회전은 칸 i 를 칸 수-1-i 로 보낸다. 출발·도착에 모두 적용하면 이 식이 된다.
-        return self.action_space_size - 1 - index
+        # 180° 회전은 칸 i 를 칸 수-1-i 로 보낸다. 출발·도착에 모두 적용하면 평면 안에서
+        # 뒤집는 식이 된다. 쌓기 여부는 그대로다.
+        stack, squares = divmod(index, self._plane_size)
+        return stack * self._plane_size + self._plane_size - 1 - squares
 
     def from_canonical_action_index(self, position: GungiPosition, index: int) -> int:
         # 180° 회전은 두 번 하면 제자리라 역변환이 같다.
@@ -275,7 +292,8 @@ class Gungi:
         return position.engine_position.board_key
 
     def render_move(self, move: GungiMove) -> str:
-        return f"{self._render_square(move.source)}-{self._render_square(move.target)}"
+        squares = f"{self._render_square(move.source)}-{self._render_square(move.target)}"
+        return squares + (STACK_MARK if move.stack else "")
 
     def render_log_move(self, position: GungiPosition, move: GungiMove) -> str:
         """로그에 쓰는 표기. 수 표기에 잡기면 `x` 를 덧붙인다. 합법수가 아니면 `ValueError` 다.
@@ -290,11 +308,12 @@ class Gungi:
     def parse_move(self, text: str) -> GungiMove:
         match = MOVE_PATTERN.fullmatch(text.strip())
         if match is None:
-            raise ValueError(f"수 표기가 'b1-c3' 꼴이 아니다: {text!r}")
-        source_column, source_row, target_column, target_row = match.groups()
+            raise ValueError(f"수 표기가 'b1-c3' 또는 'b1-c3^' 꼴이 아니다: {text!r}")
+        source_column, source_row, target_column, target_row, mark = match.groups()
         return GungiMove(
             self._parse_square(source_column, source_row),
             self._parse_square(target_column, target_row),
+            stack=mark == STACK_MARK,
         )
 
     def _render_square(self, square: int) -> str:

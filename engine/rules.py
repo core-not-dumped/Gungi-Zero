@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from engine.movement import MOVEMENT
@@ -12,10 +13,14 @@ from engine.variant import VariantConfig
 
 @dataclass(frozen=True, slots=True)
 class Move:
-    """출발 칸과 도착 칸. 이 쌍이 수를 모호함 없이 결정한다."""
+    """출발 칸, 도착 칸, 쌓기 여부 (ADR-0006).
+
+    맨 위가 적 말인 칸에는 잡기(`stack=False`)와 쌓기(`stack=True`)가 따로 있다.
+    """
 
     source: int
     target: int
+    stack: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,8 +89,7 @@ class RuleEngine:
         for source, tower in enumerate(position.board):
             if not tower or tower[-1].owner is not position.side:
                 continue
-            for target in self._targets(position, source):
-                moves.append(Move(source, target))
+            moves.extend(self._piece_moves(position, source))
         return tuple(moves)
 
     def apply_move(self, position: Position, move: Move) -> Position:
@@ -93,9 +97,13 @@ class RuleEngine:
         if move not in self.legal_moves(position):
             raise ValueError(f"합법수가 아니다: {move}")
         board = list(position.board)
-        # 이동과 잡기뿐이다 — 도착 칸에 있던 적 말은 사라진다.
-        board[move.target] = board[move.source]
-        board[move.source] = ()
+        *left_behind, mover = board[move.source]
+        below = board[move.target]
+        if not move.stack:
+            # 이동이나 잡기다. 도착 칸의 적 말은 전부 사라지고 내 말은 남는다.
+            below = tuple(piece for piece in below if piece.owner is mover.owner)
+        board[move.source] = tuple(left_behind)
+        board[move.target] = (*below, mover)
         return Position(
             board=tuple(board),
             side=position.side.opponent,
@@ -103,20 +111,21 @@ class RuleEngine:
             previous=position,
         )
 
-    def _targets(self, position: Position, source: int) -> list[int]:
-        """`source` 의 맨 위 말이 갈 수 있는 칸. 빈칸으로의 이동과 적 말 잡기가 같은 길이다."""
+    def _piece_moves(self, position: Position, source: int) -> list[Move]:
+        """`source` 의 맨 위 말이 두는 수. 아래에 깔린 말은 움직이지 않는다."""
         tower = position.board[source]
-        self._require_single_tier(tower)
         mover = tower[-1]
+        tier = len(tower)
         # 표의 앞은 선수의 앞이다. 후수는 180° 돌려 본다 (ADR-0003).
         facing = 1 if mover.owner is Side.FIRST else -1
         # 판의 긴 변만큼 가면 어느 방향이든 판 밖이다.
         board_span = max(self.config.width, self.config.height)
 
         row, column = divmod(source, self.config.width)
-        targets: list[int] = []
+        moves: list[Move] = []
         for ray in MOVEMENT[mover.kind]:
-            reach = board_span if ray.reach is None else ray.reach
+            # 단이 1 오를 때마다 유한 방향이 한 칸 는다.
+            reach = board_span if ray.reach is None else ray.reach + tier - 1
             for distance in range(1, reach + 1):
                 to_column = column + facing * ray.column_step * distance
                 to_row = row + facing * ray.row_step * distance
@@ -124,23 +133,29 @@ class RuleEngine:
                     break
                 target = to_row * self.config.width + to_column
                 occupant = position.board[target]
-                if occupant:
-                    self._require_single_tier(occupant)
-                    if occupant[-1].owner is not position.side:
-                        targets.append(target)
-                    else:
-                        self._fail_if_stackable(mover, occupant[-1])
-                else:
-                    targets.append(target)
-                if blocks_path(len(tower), occupant):
+                moves.extend(
+                    Move(source, target, stack)
+                    for stack in self._stack_options(mover, tier, occupant)
+                )
+                if blocks_path(tier, occupant):
                     break
-        return targets
+        return moves
 
-    def _require_single_tier(self, tower: Tower) -> None:
-        if len(tower) > 1:
-            raise NotImplementedError("탑의 규칙은 아직 없다 (07 번 티켓)")
+    def _stack_options(self, mover: Piece, tier: int, occupant: Tower) -> Iterator[bool]:
+        """`tier` 단의 `mover` 가 `occupant` 칸에서 고를 수 있는 수의 쌓기 여부 (ADR-0006).
 
-    def _fail_if_stackable(self, mover: Piece, below: Piece) -> None:
-        """아군 위에 쌓을 수 있는 수를 조용히 빠뜨리지 않는다. 帥 가 끼면 쌓기는 없다."""
-        if self.config.max_tier > 1 and PieceType.MARSHAL not in (mover.kind, below.kind):
-            raise NotImplementedError("쌓기 규칙은 아직 없다 (07 번 티켓)")
+        빈칸은 이동, 아군은 쌓기뿐이고, 적은 잡기와 쌓기 둘 다다.
+        """
+        if not occupant:
+            yield False
+            return
+        # 단수 제약: 자기보다 높은 단의 말은 잡을 수도 쌓을 수도 없다.
+        if len(occupant) > tier:
+            return
+        top = occupant[-1]
+        if top.owner is not mover.owner:
+            yield False
+        # 帥 위에는 누구도 못 올라가고, 帥 자신도 어디에도 못 올라간다 (帥ツケ 금지).
+        marshal_involved = PieceType.MARSHAL in (top.kind, mover.kind)
+        if len(occupant) < self.config.max_tier and not marshal_involved:
+            yield True
