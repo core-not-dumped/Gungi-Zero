@@ -22,6 +22,10 @@ class Ray:
     row_step: int
     reach: int | None
 
+    def reach_at(self, tier: int) -> int | None:
+        """`tier` 단의 사거리. 단이 1 오를 때마다 유한 방향은 한 칸 늘고, 무제한은 그대로다."""
+        return None if self.reach is None else self.reach + tier - 1
+
 
 ORTHOGONALS = ((0, 1), (0, -1), (-1, 0), (1, 0))
 DIAGONALS = ((-1, 1), (1, 1), (-1, -1), (1, -1))

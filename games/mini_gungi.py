@@ -223,21 +223,21 @@ class Gungi:
     @property
     def action_space_size(self) -> int:
         """출발 칸 * 도착 칸 * 쌓기 여부 (ADR-0006)."""
-        return 2 * self._plane_size
+        return 2 * self._square_pair_count
 
     @property
-    def _plane_size(self) -> int:
+    def _square_pair_count(self) -> int:
         """쌓기 여부 하나에 해당하는 행동 인덱스의 개수. 출발 칸 * 도착 칸이다."""
         return self._config.square_count**2
 
     def action_index(self, move: GungiMove) -> int:
         squares = move.source * self._config.square_count + move.target
-        return move.stack * self._plane_size + squares
+        return move.stack * self._square_pair_count + squares
 
     def move_from_action_index(self, index: int) -> GungiMove:
         if not 0 <= index < self.action_space_size:
             raise ValueError(f"행동 공간 밖의 인덱스다: {index}")
-        stack, squares = divmod(index, self._plane_size)
+        stack, squares = divmod(index, self._square_pair_count)
         source, target = divmod(squares, self._config.square_count)
         return GungiMove(source, target, stack=bool(stack))
 
@@ -257,8 +257,8 @@ class Gungi:
             return index
         # 180° 회전은 칸 i 를 칸 수-1-i 로 보낸다. 출발·도착에 모두 적용하면 평면 안에서
         # 뒤집는 식이 된다. 쌓기 여부는 그대로다.
-        stack, squares = divmod(index, self._plane_size)
-        return stack * self._plane_size + self._plane_size - 1 - squares
+        stack, squares = divmod(index, self._square_pair_count)
+        return stack * self._square_pair_count + self._square_pair_count - 1 - squares
 
     def from_canonical_action_index(self, position: GungiPosition, index: int) -> int:
         # 180° 회전은 두 번 하면 제자리라 역변환이 같다.

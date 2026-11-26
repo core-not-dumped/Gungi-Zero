@@ -124,9 +124,8 @@ class RuleEngine:
         row, column = divmod(source, self.config.width)
         moves: list[Move] = []
         for ray in MOVEMENT[mover.kind]:
-            # 단이 1 오를 때마다 유한 방향이 한 칸 는다.
-            reach = board_span if ray.reach is None else ray.reach + tier - 1
-            for distance in range(1, reach + 1):
+            reach = ray.reach_at(tier)
+            for distance in range(1, (board_span if reach is None else reach) + 1):
                 to_column = column + facing * ray.column_step * distance
                 to_row = row + facing * ray.row_step * distance
                 if not (0 <= to_column < self.config.width and 0 <= to_row < self.config.height):
@@ -135,13 +134,13 @@ class RuleEngine:
                 occupant = position.board[target]
                 moves.extend(
                     Move(source, target, stack)
-                    for stack in self._stack_options(mover, tier, occupant)
+                    for stack in self._stack_flags(mover, tier, occupant)
                 )
                 if blocks_path(tier, occupant):
                     break
         return moves
 
-    def _stack_options(self, mover: Piece, tier: int, occupant: Tower) -> Iterator[bool]:
+    def _stack_flags(self, mover: Piece, tier: int, occupant: Tower) -> Iterator[bool]:
         """`tier` 단의 `mover` 가 `occupant` 칸에서 고를 수 있는 수의 쌓기 여부 (ADR-0006).
 
         빈칸은 이동, 아군은 쌓기뿐이고, 적은 잡기와 쌓기 둘 다다.
