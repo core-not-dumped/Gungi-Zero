@@ -60,12 +60,6 @@ END_REASON_NAMES = {
 }
 
 
-def _board_size(game: Gungi) -> tuple[int, int]:
-    """판의 (열 수, 행 수). 텐서의 `(C, H, W)` 가 판 크기다."""
-    _, height, width = game.tensor_shape
-    return width, height
-
-
 @dataclass(frozen=True)
 class Button:
     label: str
@@ -215,18 +209,19 @@ class App:
     def square_rect(self, square: int) -> pygame.Rect:
         """칸이 화면에서 차지하는 자리. 선수의 끝줄(row 0)이 아래다."""
         assert self.session is not None
-        width, height = _board_size(self.session.game)
-        size = min(MAX_CELL, BOARD_SPAN // max(width, height))
-        row, column = divmod(square, width)
+        geometry = self.session.game.geometry
+        size = min(MAX_CELL, BOARD_SPAN // max(geometry.width, geometry.height))
+        column, row = geometry.column_and_row(square)
         return pygame.Rect(
-            BOARD_LEFT + column * size, BOARD_TOP + (height - 1 - row) * size, size, size
+            BOARD_LEFT + column * size,
+            BOARD_TOP + (geometry.height - 1 - row) * size,
+            size,
+            size,
         )
 
     def _square_at(self, session: PlaySession, point: tuple[int, int]) -> int | None:
-        width, height = _board_size(session.game)
-        return next(
-            (s for s in range(width * height) if self.square_rect(s).collidepoint(point)), None
-        )
+        squares = range(session.game.geometry.square_count)
+        return next((s for s in squares if self.square_rect(s).collidepoint(point)), None)
 
     def result_text(self) -> str | None:
         """끝난 대국의 결과와 사유. 진행 중이면 `None` 이다."""
@@ -262,9 +257,9 @@ class App:
             self._write(surface, label, 22, TEXT, midleft=(80, top + 22))
 
     def _draw_board(self, surface: pygame.Surface, session: PlaySession) -> None:
-        width, height = _board_size(session.game)
+        geometry = session.game.geometry
         targets = session.targets
-        for square in range(width * height):
+        for square in range(geometry.square_count):
             rect = self.square_rect(square)
             color = CELL
             if square == session.choosing:
@@ -280,16 +275,15 @@ class App:
                 if not tower:
                     pygame.draw.circle(surface, TARGET, rect.center, rect.width // 8)
 
-        # 칸 이름은 수 표기에서 얻는다 — 로그의 표기와 어긋날 수 없다.
-        for column in range(width):
-            name = session.game.render_square(column)
-            x = self.square_rect(column).centerx
-            self._write(surface, name[0], 20, TEXT, center=(x, BOARD_TOP - 20))
-        for row in range(height):
-            square = row * width
-            name = session.game.render_square(square)
-            y = self.square_rect(square).centery
-            self._write(surface, name[1:], 20, TEXT, center=(BOARD_LEFT - 22, y))
+        # 열·행 이름은 수 표기와 같은 곳에서 얻는다 — 로그의 표기와 어긋날 수 없다.
+        for column in range(geometry.width):
+            name = geometry.column_name(column)
+            x = self.square_rect(geometry.square(column, 0)).centerx
+            self._write(surface, name, 20, TEXT, center=(x, BOARD_TOP - 20))
+        for row in range(geometry.height):
+            name = geometry.row_name(row)
+            y = self.square_rect(geometry.square(0, row)).centery
+            self._write(surface, name, 20, TEXT, center=(BOARD_LEFT - 22, y))
 
     def _draw_tower(self, surface: pygame.Surface, tower: TowerView, cell: pygame.Rect) -> None:
         """위 말을 크게 위에, 아래 말을 작게 그 밑에 그린다."""

@@ -11,6 +11,7 @@ from typing import final
 import numpy as np
 import numpy.typing as npt
 
+from engine.geometry import COLUMN_NAMES, BoardGeometry
 from engine.pieces import Piece, PieceType, Side
 from engine.position import Position, Tower
 from engine.rules import EndReason, RuleEngine
@@ -22,6 +23,7 @@ __all__ = [
     "MARSHAL_ONLY",
     "MINI_GUNGI",
     "SINGLE_TIER",
+    "BoardGeometry",
     "EndReason",
     "Gungi",
     "GungiMove",
@@ -63,7 +65,6 @@ SINGLE_TIER = replace(MINI_GUNGI, max_tier=1)
 
 EMPTY_CELL = "."
 TOWER_SEPARATOR = "/"
-COLUMNS = "abcdefghijklmnopqrstuvwxyz"
 SYMBOLS = {
     PieceType.MARSHAL: "帥",
     PieceType.GENERAL: "大",
@@ -97,6 +98,8 @@ class GungiPosition:
     """엔진의 국면을 `games.base.Position` 으로 보여준다."""
 
     engine_position: Position
+    # `Gungi.canonical` 이 돌려준 국면인지. 원래 국면의 자리에 정규형을 넘기는 실수를 막는다.
+    canonical_view: bool = False
 
     @property
     def player(self) -> Player:
@@ -120,24 +123,33 @@ class Gungi:
     """변형 설정 하나의 군의."""
 
     def __init__(self, config: VariantConfig) -> None:
-        if config.width > len(COLUMNS):
-            raise ValueError(f"열 표기는 {len(COLUMNS)} 개까지다: {config.width}")
+        if config.width > len(COLUMN_NAMES):
+            raise ValueError(f"열 표기는 {len(COLUMN_NAMES)} 개까지다: {config.width}")
         if config.max_tier > PLANE_TIERS:
             raise ValueError(f"텐서 평면은 {PLANE_TIERS} 단까지다: {config.max_tier}")
         self._config = config
         self._engine = RuleEngine(config)
+        self._geometry = config.geometry
+
+    @property
+    def geometry(self) -> BoardGeometry:
+        """판의 좌표. 칸 번호는 `GungiMove` 의 `source`·`target` 과 같다. `Game` 에는 없다."""
+        return self._geometry
 
     def initial_position(self) -> GungiPosition:
         return GungiPosition(self._engine.initial_position())
 
     def render(self, position: GungiPosition) -> str:
-        width, height = self._config.width, self._config.height
-        header = " " * FIRST_CELL_CENTER + (" " * (CELL_PITCH - 1)).join(COLUMNS[:width])
+        geometry = self._geometry
+        width, height = geometry.width, geometry.height
+        names = (geometry.column_name(column) for column in range(width))
+        header = " " * FIRST_CELL_CENTER + (" " * (CELL_PITCH - 1)).join(names)
         lines = [header]
         for row in reversed(range(height)):
-            line = f"{row + 1:>2}"
+            line = f"{geometry.row_name(row):>2}"
             for column in range(width):
-                cell = self._render_tower(position.engine_position.board[row * width + column])
+                square = geometry.square(column, row)
+                cell = self._render_tower(position.engine_position.board[square])
                 # 칸을 열 중심에 맞추되, 넓은 탑끼리도 빈칸 하나는 떨어뜨린다.
                 start = FIRST_CELL_CENTER + column * CELL_PITCH - _display_width(cell) // 2
                 line += " " * max(1, start - _display_width(line)) + cell
@@ -147,25 +159,27 @@ class Gungi:
 
     def parse(self, text: str) -> GungiPosition:
         """`render` 의 출력을 읽는다. 텍스트에는 경로가 없어 반복 횟수는 0 이다."""
-        width, height = self._config.width, self._config.height
+        geometry = self._geometry
+        width, height = geometry.width, geometry.height
         lines = [line for line in text.splitlines() if line.strip()]
         if len(lines) != height + 2:
             raise ValueError(f"판 표기는 {height + 2} 줄이어야 한다: {len(lines)} 줄을 받았다")
 
         header = lines[0].split()
-        if header != list(COLUMNS[:width]):
-            raise ValueError(f"열 머리글이 {list(COLUMNS[:width])} 가 아니다: {header}")
+        columns = [geometry.column_name(column) for column in range(width)]
+        if header != columns:
+            raise ValueError(f"열 머리글이 {columns} 가 아니다: {header}")
 
-        board: list[Tower] = [()] * self._config.square_count
+        board: list[Tower] = [()] * geometry.square_count
         for row, line in zip(reversed(range(height)), lines[1 : height + 1], strict=True):
             tokens = line.split()
-            if tokens[0] != str(row + 1):
+            if tokens[0] != geometry.row_name(row):
                 raise ValueError(f"{row + 1} 행을 기대했는데 {tokens[0]!r} 행을 받았다")
             cells = tokens[1:]
             if len(cells) != width:
                 raise ValueError(f"{row + 1} 행의 칸이 {width} 개가 아니다: {cells}")
             for column, cell in enumerate(cells):
-                board[row * width + column] = self._parse_tower(cell)
+                board[geometry.square(column, row)] = self._parse_tower(cell)
 
         for side in Side:
             marshals = sum(
@@ -214,7 +228,7 @@ class Gungi:
     def tower(self, position: GungiPosition, square: int) -> TowerView:
         """`square` 칸의 탑을 아래(1단)부터, (주인, 말 글자)로. 화면용이며 `Game` 에는 없다.
 
-        칸 번호는 `GungiMove` 의 `source`·`target` 과 같다 — `row * width + column`.
+        칸 번호는 `geometry` 의 것이다.
         """
         return tuple(
             (PLAYERS[piece.owner], SYMBOLS[piece.kind])
@@ -251,15 +265,21 @@ class Gungi:
         return self._config.square_count**2
 
     def action_index(self, move: GungiMove) -> int:
+        for square in (move.source, move.target):
+            if not self._geometry.on_board(square):
+                raise ValueError(f"판 밖의 칸을 가리키는 수다: {move}")
         squares = move.source * self._config.square_count + move.target
         return move.stack * self._square_pair_count + squares
 
     def move_from_action_index(self, index: int) -> GungiMove:
-        if not 0 <= index < self.action_space_size:
-            raise ValueError(f"행동 공간 밖의 인덱스다: {index}")
+        self._check_action_index(index)
         stack, squares = divmod(index, self._square_pair_count)
         source, target = divmod(squares, self._config.square_count)
         return GungiMove(source, target, stack=bool(stack))
+
+    def _check_action_index(self, index: int) -> None:
+        if not 0 <= index < self.action_space_size:
+            raise ValueError(f"행동 공간 밖의 인덱스다: {index}")
 
     def legal_action_mask(self, position: GungiPosition) -> npt.NDArray[np.bool_]:
         mask = np.zeros(self.action_space_size, dtype=bool)
@@ -268,17 +288,25 @@ class Gungi:
         return mask
 
     def canonical(self, position: GungiPosition) -> GungiPosition:
-        if position.player is Player.FIRST:
+        if position.canonical_view:
             return position
-        return GungiPosition(position.engine_position.rotated())
+        engine_position = position.engine_position
+        if position.player is Player.SECOND:
+            engine_position = engine_position.rotated()
+        return GungiPosition(engine_position, canonical_view=True)
 
     def to_canonical_action_index(self, position: GungiPosition, index: int) -> int:
+        if position.canonical_view:
+            raise ValueError("정규형이 아니라 원래 국면을 넘겨야 한다")
+        self._check_action_index(index)
         if position.player is Player.FIRST:
             return index
-        # 180° 회전은 칸 i 를 칸 수-1-i 로 보낸다. 출발·도착에 모두 적용하면 평면 안에서
-        # 뒤집는 식이 된다. 쌓기 여부는 그대로다.
+        # 출발·도착 칸을 돌린다. 쌓기 여부는 그대로다.
         stack, squares = divmod(index, self._square_pair_count)
-        return stack * self._square_pair_count + self._square_pair_count - 1 - squares
+        source, target = divmod(squares, self._config.square_count)
+        rotate = self._geometry.rotate
+        rotated = rotate(source) * self._config.square_count + rotate(target)
+        return stack * self._square_pair_count + rotated
 
     def from_canonical_action_index(self, position: GungiPosition, index: int) -> int:
         # 180° 회전은 두 번 하면 제자리라 역변환이 같다.
@@ -295,11 +323,16 @@ class Gungi:
         수 진행도는 `ply / move_limit` 이다.
         """
         tensor = np.zeros(self.tensor_shape, dtype=np.float32)
-        seen = self.canonical(position).engine_position
-        for square, tower in enumerate(seen.board):
-            row, column = divmod(square, self._config.width)
+        mover = position.engine_position.side
+        # 정규형의 판만 필요하다. `canonical` 은 경로까지 돌리므로 부르지 않고 칸만 옮긴다.
+        rotated = position.player is Player.SECOND
+        for square, tower in enumerate(position.engine_position.board):
+            if not tower:
+                continue
+            seen_at = self._geometry.rotate(square) if rotated else square
+            column, row = self._geometry.column_and_row(seen_at)
             for tier, piece in enumerate(tower):
-                owner = 0 if piece.owner is seen.side else 1
+                owner = 0 if piece.owner is mover else 1
                 kind = PLANE_KINDS.index(piece.kind)
                 plane = (owner * len(PLANE_KINDS) + kind) * PLANE_TIERS + tier
                 tensor[plane, row, column] = 1.0
@@ -331,18 +364,11 @@ class Gungi:
             raise ValueError(f"수 표기가 'b1-c3' 또는 'b1-c3^' 꼴이 아니다: {text!r}")
         source_column, source_row, target_column, target_row, mark = match.groups()
         return GungiMove(
-            self._parse_square(source_column, source_row),
-            self._parse_square(target_column, target_row),
+            self._geometry.square_named(source_column + source_row),
+            self._geometry.square_named(target_column + target_row),
             stack=mark == STACK_MARK,
         )
 
     def render_square(self, square: int) -> str:
         """칸 이름. `a1` 꼴이다."""
-        row, column = divmod(square, self._config.width)
-        return f"{COLUMNS[column]}{row + 1}"
-
-    def _parse_square(self, column_name: str, row_name: str) -> int:
-        column, row = COLUMNS.index(column_name), int(row_name) - 1
-        if column >= self._config.width or row >= self._config.height:
-            raise ValueError(f"판 밖의 칸이다: {column_name}{row_name}")
-        return row * self._config.width + column
+        return self._geometry.square_name(square)

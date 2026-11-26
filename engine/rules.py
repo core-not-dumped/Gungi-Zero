@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum, auto
 
+from engine.geometry import forward
 from engine.movement import MOVEMENT
 from engine.pieces import Piece, PieceType, Side
 from engine.position import Position, Tower
@@ -55,11 +56,12 @@ class RuleEngine:
     config: VariantConfig
 
     def initial_position(self) -> Position:
-        board: list[Tower] = [()] * self.config.square_count
+        geometry = self.config.geometry
+        board: list[Tower] = [()] * geometry.square_count
         for placement in self.config.setup:
-            square = placement.row * self.config.width + placement.column
+            square = geometry.square(placement.column, placement.row)
             board[square] = (Piece(placement.kind, Side.FIRST),)
-            board[self.config.square_count - 1 - square] = (Piece(placement.kind, Side.SECOND),)
+            board[geometry.rotate(square)] = (Piece(placement.kind, Side.SECOND),)
         return Position(board=tuple(board), side=Side.FIRST, ply=0)
 
     def result(self, position: Position) -> Result | None:
@@ -128,21 +130,22 @@ class RuleEngine:
         tower = position.board[source]
         mover = tower[-1]
         tier = len(tower)
-        # 표의 앞은 선수의 앞이다. 후수는 180° 돌려 본다 (ADR-0003).
-        facing = 1 if mover.owner is Side.FIRST else -1
+        # 표의 앞은 선수의 앞이다.
+        facing = forward(mover.owner)
+        geometry = self.config.geometry
         # 판의 긴 변만큼 가면 어느 방향이든 판 밖이다.
-        board_span = max(self.config.width, self.config.height)
+        board_span = max(geometry.width, geometry.height)
 
-        row, column = divmod(source, self.config.width)
+        column, row = geometry.column_and_row(source)
         moves: list[Move] = []
         for ray in MOVEMENT[mover.kind]:
             reach = ray.reach_at(tier)
             for distance in range(1, (board_span if reach is None else reach) + 1):
                 to_column = column + facing * ray.column_step * distance
                 to_row = row + facing * ray.row_step * distance
-                if not (0 <= to_column < self.config.width and 0 <= to_row < self.config.height):
+                if not geometry.contains(to_column, to_row):
                     break
-                target = to_row * self.config.width + to_column
+                target = geometry.square(to_column, to_row)
                 occupant = position.board[target]
                 moves.extend(
                     Move(source, target, stack)

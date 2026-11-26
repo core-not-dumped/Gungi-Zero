@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from engine.geometry import BoardGeometry
 from engine.pieces import PieceType
 
 
@@ -32,6 +33,8 @@ class VariantConfig:
     setup: tuple[Placement, ...]
     move_limit: int
     repetition_limit: int
+    # 판 크기에서 정해진다. 따로 받지 않는다.
+    geometry: BoardGeometry = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.width < 1 or self.height < 1:
@@ -43,13 +46,15 @@ class VariantConfig:
         if self.repetition_limit < 2:
             raise ValueError(f"반복 한도는 2 이상이다: {self.repetition_limit}")
 
-        taken: set[tuple[int, int]] = set()
+        geometry = BoardGeometry(self.width, self.height)
+        object.__setattr__(self, "geometry", geometry)
+
+        taken: set[int] = set()
         for placement in self.setup:
-            column, row = placement.column, placement.row
-            if not (0 <= column < self.width and 0 <= row < self.height):
+            if not geometry.contains(placement.column, placement.row):
                 raise ValueError(f"판 밖의 배치다: {placement}")
-            rotated = (self.width - 1 - column, self.height - 1 - row)
-            for square in ((column, row), rotated):
+            own = geometry.square(placement.column, placement.row)
+            for square in (own, geometry.rotate(own)):
                 if square in taken:
                     raise ValueError(f"배치가 (회전한 상대 배치를 포함해) 겹친다: {placement}")
                 taken.add(square)
@@ -60,4 +65,4 @@ class VariantConfig:
 
     @property
     def square_count(self) -> int:
-        return self.width * self.height
+        return self.geometry.square_count

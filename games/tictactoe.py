@@ -53,6 +53,8 @@ class TicTacToePosition:
 
     board: tuple[Player | None, ...]
     player: Player
+    # `TicTacToe.canonical` 이 돌려준 국면인지. 원래 국면의 자리에 정규형을 넘기는 실수를 막는다.
+    canonical_view: bool = False
 
     @property
     def ply(self) -> int:
@@ -104,12 +106,17 @@ class TicTacToe:
         return SQUARE_COUNT
 
     def action_index(self, move: TicTacToeMove) -> int:
+        if not 0 <= move.square < SQUARE_COUNT:
+            raise ValueError(f"판 밖의 칸을 가리키는 수다: {move}")
         return move.square
 
     def move_from_action_index(self, index: int) -> TicTacToeMove:
+        self._check_action_index(index)
+        return TicTacToeMove(index)
+
+    def _check_action_index(self, index: int) -> None:
         if not 0 <= index < SQUARE_COUNT:
             raise ValueError(f"행동 공간 밖의 인덱스다: {index}")
-        return TicTacToeMove(index)
 
     def legal_action_mask(self, position: TicTacToePosition) -> npt.NDArray[np.bool_]:
         mask = np.zeros(SQUARE_COUNT, dtype=bool)
@@ -118,18 +125,23 @@ class TicTacToe:
         return mask
 
     def canonical(self, position: TicTacToePosition) -> TicTacToePosition:
-        if position.player is Player.FIRST:
+        if position.canonical_view:
             return position
-        swapped = tuple(None if cell is None else cell.opponent for cell in position.board)
-        return TicTacToePosition(board=swapped, player=Player.FIRST)
+        board = position.board
+        if position.player is Player.SECOND:
+            board = tuple(None if cell is None else cell.opponent for cell in board)
+        return TicTacToePosition(board=board, player=Player.FIRST, canonical_view=True)
 
     def to_canonical_action_index(self, position: TicTacToePosition, index: int) -> int:
+        if position.canonical_view:
+            raise ValueError("정규형이 아니라 원래 국면을 넘겨야 한다")
+        self._check_action_index(index)
         # 틱택토의 정규형은 색만 바꾼다 — 판을 돌리지 않으므로 칸 번호가 그대로다.
-        # 군의는 180° 회전이라 여기서 칸이 옮겨진다. `position` 을 쓰지 않는 쪽이 정답이다.
+        # 군의는 180° 회전이라 여기서 칸이 옮겨진다.
         return index
 
     def from_canonical_action_index(self, position: TicTacToePosition, index: int) -> int:
-        return index
+        return self.to_canonical_action_index(position, index)
 
     @property
     def tensor_shape(self) -> tuple[int, int, int]:

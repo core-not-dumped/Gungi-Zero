@@ -15,6 +15,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from ai.random_play import play_random_episode
 from games.base import Game, Outcome, Player
 from games.mini_gungi import MARSHAL_ONLY, MINI_GUNGI, SINGLE_TIER, Gungi
 from games.nano_gungi import NANO_GUNGI
@@ -168,6 +169,104 @@ def test_the_canonical_action_index_mapping_is_invertible(
             carried = game.to_canonical_action_index(position, index)
             assert 0 <= carried < game.action_space_size
             assert game.from_canonical_action_index(position, carried) == index
+
+
+def swapped(outcome: Outcome | None) -> Outcome | None:
+    """선수 승과 후수 승을 맞바꾼 결과. 무승부와 진행 중은 그대로다."""
+    if outcome is None or outcome.winner is None:
+        return outcome
+    return Outcome.win_for(outcome.winner.opponent)
+
+
+def check_the_frames_agree_on_the_result(game: Game[Any, Any], position: Any) -> None:
+    outcome = game.outcome(position)
+    expected = outcome if position.player is Player.FIRST else swapped(outcome)
+    assert game.outcome(game.canonical(position)) is expected
+
+
+@pytest.mark.parametrize("game", GAMES)
+@given(picks=PICKS)
+def test_the_canonical_form_swaps_the_winner_when_the_second_player_is_to_move(
+    game: Game[Any, Any], picks: list[int]
+) -> None:
+    for position in walk(game, picks):
+        check_the_frames_agree_on_the_result(game, position)
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_finished_episodes_keep_their_winner_across_frames(game: Game[Any, Any]) -> None:
+    """끝난 국면은 짧은 무작위 걸음에 잘 안 나온다. 끝까지 둔 대국으로 두 차례 모두를 본다."""
+    decided: set[Player] = set()
+    for seed in range(100):
+        final = play_random_episode(game, seed).final_position
+        check_the_frames_agree_on_the_result(game, final)
+        if game.outcome(final) is not Outcome.DRAW:
+            decided.add(final.player)
+    assert Player.SECOND in decided, "승패가 뒤바뀌는 경우가 한 번도 나오지 않았다"
+
+
+@pytest.mark.parametrize("game", GAMES)
+@given(picks=PICKS)
+def test_a_move_played_in_either_frame_reaches_the_same_position(
+    game: Game[Any, Any], picks: list[int]
+) -> None:
+    position = walk(game, picks)[-1]
+    canonical = game.canonical(position)
+    for move in game.legal_moves(position):
+        index = game.to_canonical_action_index(position, game.action_index(move))
+        carried = game.move_from_action_index(index)
+        original = game.canonical(game.apply_move(position, move))
+        assert game.canonical(game.apply_move(canonical, carried)) == original
+
+
+@pytest.mark.parametrize("game", GAMES)
+@given(picks=PICKS)
+def test_a_canonical_position_is_refused_where_the_original_is_wanted(
+    game: Game[Any, Any], picks: list[int]
+) -> None:
+    for position in walk(game, picks):
+        canonical = game.canonical(position)
+        assert canonical != position
+        for convert in (game.to_canonical_action_index, game.from_canonical_action_index):
+            with pytest.raises(ValueError):
+                convert(canonical, 0)
+
+
+@pytest.mark.parametrize("game", GAMES)
+@pytest.mark.parametrize("player_to_move", list(Player))
+def test_an_index_outside_the_action_space_is_refused(
+    game: Game[Any, Any], player_to_move: Player
+) -> None:
+    position = game.initial_position()
+    if player_to_move is Player.SECOND:
+        position = game.apply_move(position, game.legal_moves(position)[0])
+    assert position.player is player_to_move
+    size = game.action_space_size
+    for index in (-1, -size, size, 2 * size):
+        with pytest.raises(ValueError):
+            game.move_from_action_index(index)
+        for convert in (game.to_canonical_action_index, game.from_canonical_action_index):
+            with pytest.raises(ValueError):
+                convert(position, index)
+
+
+@pytest.mark.parametrize("game", GAMES)
+@given(picks=PICKS)
+def test_the_legal_moves_come_in_the_same_order_every_time(
+    game: Game[Any, Any], picks: list[int]
+) -> None:
+    for position, replayed in zip(walk(game, picks), walk(game, picks), strict=True):
+        assert game.legal_moves(replayed) == game.legal_moves(position)
+
+
+@pytest.mark.parametrize("game", GAMES)
+@given(picks=PICKS)
+def test_parse_move_reads_back_what_render_move_writes(
+    game: Game[Any, Any], picks: list[int]
+) -> None:
+    for position in walk(game, picks):
+        for move in game.legal_moves(position):
+            assert game.parse_move(game.render_move(move)) == move
 
 
 @pytest.mark.parametrize("game", GAMES)

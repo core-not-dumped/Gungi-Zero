@@ -600,6 +600,12 @@ def test_a_tower_is_listed_from_the_bottom_with_each_owner() -> None:
  1   .      ▲帥      .
 차례: ▲   ply: 0
 """)
-    a2 = game.parse_move("a2-a2").source
+    a2 = game.geometry.square_named("a2")
     assert game.tower(position, a2) == ((Player.FIRST, "大"), (Player.SECOND, "兵"))
     assert game.tower(position, 0) == ()
+
+
+@pytest.mark.parametrize("move", [GungiMove(-1, 0), GungiMove(0, 25), GungiMove(40, 3)])
+def test_a_move_off_the_board_has_no_action_index(move: GungiMove) -> None:
+    with pytest.raises(ValueError):
+        Gungi(MINI_GUNGI).action_index(move)

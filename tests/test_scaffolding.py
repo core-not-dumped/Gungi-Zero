@@ -7,7 +7,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# CLAUDE.md 의 구조를 그대로 적은 목록이다. 디렉터리를 훑어 만들면 동어반복이 된다.
+# 있어야 하는 패키지를 손으로 적은 목록이다. 디렉터리를 훑어 만들면 동어반복이 된다.
 PACKAGES = ["games", "engine", "ai", "eval", "ui", "scripts", "tests"]
 
 

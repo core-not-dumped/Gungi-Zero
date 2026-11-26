@@ -3,10 +3,43 @@
 `ai/` 가 게임에 대해 아는 것은 이 모듈뿐이다 (ADR-0001). 용어는 `CONTEXT.md` 를 따른다 —
 `Game` 은 게임 종류, `Position` 은 한 국면이다.
 
-**행동 인덱스의 프레임**: 모든 연산은 받은 `Position` 의 프레임에서 답한다. 신경망에 쓸 때는
-`canonical(p)` 를 먼저 얻어 그 국면에 `encode`·`legal_action_mask`·`legal_moves` 를 쓰면
-전부 정규형 프레임이다. 신경망이 고른 인덱스는 `from_canonical_action_index(p, i)` 로
-원래 프레임으로 되돌린 뒤 `move_from_action_index` 로 수가 된다.
+## 프레임
+
+프레임은 행동 인덱스·좌표·선후가 읽히는 기준이다. **모든 연산은 받은 `Position` 의 프레임에서
+답한다.** 원래 국면을 `p`, 정규형을 `c = canonical(p)` 라 하자. `c` 도 온전한 국면이라
+`legal_moves`·`legal_action_mask`·`encode`·`apply_move`·`outcome` 을 모두 받는다. `p` 가 선수
+차례면 두 프레임의 값은 같고, 후수 차례면 아래처럼 옮겨진다.
+
+| 무엇 | `p` (후수 차례) | `c` |
+| --- | --- | --- |
+| `player` | 후수 | 선수 |
+| `ply` | `p.ply` | 같다 |
+| `outcome` | 선수 승 / 후수 승 | 후수 승 / 선수 승 (**뒤바뀐다**). 무승부와 진행 중은 같다 |
+| 행동 인덱스 | `i` | `to_canonical_action_index(p, i)` |
+| 좌표·수 | `m` | 옮긴 행동 인덱스의 수. 좌표가 달라질 수 있다 |
+| `encode` | 텐서 | 같은 텐서 |
+| `board_key` | `p` 의 키 | 다를 수 있다 |
+
+- **승패의 부호**: `outcome(c)` 의 `FIRST_WINS` 는 "`p` 에서 둘 차례인 쪽이 이겼다",
+  `SECOND_WINS` 는 "졌다" 다. `p` 의 선수·후수 중 누가 이겼는지는 `outcome(p)` 로 읽는다.
+- **수 두기**: 어느 프레임에서 두든 같은 국면에 닿는다. `m` 을 옮긴 수가 `m'` 이면
+  `canonical(apply_move(p, m)) == canonical(apply_move(c, m'))` 다.
+- **MCTS·신경망에서**: `c` 에 `encode`·`legal_action_mask` 를 쓰면 전부 정규형 프레임이다.
+  신경망이 고른 인덱스는 `from_canonical_action_index(p, i)` 로 되돌린 뒤
+  `move_from_action_index` 로 수가 된다. 넘기는 것은 `c` 가 아니라 **원래 국면 `p`** 다.
+
+## 잘못된 입력
+
+모두 `ValueError` 다.
+
+- 행동 공간 밖의 인덱스(음수 포함) — 인덱스를 받는 모든 연산.
+- 판 밖의 칸을 가리키는 `Move` — `action_index`.
+- `canonical` 이 돌려준 국면 — `to_canonical_action_index`·`from_canonical_action_index`.
+  선수 차례의 국면에서 얻은 것도 마찬가지다.
+- 합법수가 아닌 수 — `apply_move`.
+
+잡지 못하는 것: 행동 인덱스에는 프레임 표시가 없어, 이미 옮긴 인덱스를 다시 옮겨도 모른다.
+`parse(render(c))` 처럼 새로 만든 국면에는 정규형이었다는 표시가 없다.
 """
 
 from __future__ import annotations
@@ -86,7 +119,11 @@ class Game(Protocol[PositionT, MoveT]):
         ...
 
     def legal_moves(self, position: PositionT) -> tuple[MoveT, ...]:
-        """이 국면에서 둘 수 있는 모든 수. 종료 국면에서는 비어 있다."""
+        """이 국면에서 둘 수 있는 모든 수. 종료 국면에서는 비어 있다.
+
+        순서는 결정적이다 — 같은 국면은 같은 순서를 낸다. 시드를 고정한 대국의 재현이 여기에
+        기댄다. 프레임이 다른 두 국면의 순서는 서로 대응하지 않을 수 있다.
+        """
         ...
 
     def apply_move(self, position: PositionT, move: MoveT) -> PositionT:
@@ -106,7 +143,10 @@ class Game(Protocol[PositionT, MoveT]):
         ...
 
     def action_index(self, move: MoveT) -> int:
-        """`Move` → 행동 인덱스. 국면과 무관한 순수 좌표 변환이다."""
+        """`Move` → 행동 인덱스. 국면과 무관한 순수 좌표 변환이다.
+
+        판 밖의 칸을 가리키는 수면 `ValueError` 다.
+        """
         ...
 
     def move_from_action_index(self, index: int) -> MoveT:
@@ -120,20 +160,28 @@ class Game(Protocol[PositionT, MoveT]):
     def canonical(self, position: PositionT) -> PositionT:
         """둘 차례인 쪽이 선수인 것처럼 돌려놓은 국면. 신경망은 이것만 본다 (ADR-0003).
 
-        멱등이다 — 이미 정규형인 국면에 적용하면 그대로다. 돌려받은 국면의 좌표계가
-        곧 정규형 좌표계이므로, `legal_moves`·`action_index` 를 그 국면에 그대로 쓰면
-        정규형 프레임의 행동 인덱스가 나온다.
+        돌려준 국면에는 정규형이라는 표시가 있고 동등성에 들어간다. 그래서 선수 차례의
+        `p` 도 `canonical(p) != p` 다 — 판·차례·`ply` 는 같다. 멱등이라
+        `canonical(canonical(p)) == canonical(p)` 다. 정규형에 수를 둔 국면에는 표시가 없다.
+
+        돌려받은 국면의 좌표계가 곧 정규형 좌표계이므로, `legal_moves`·`action_index` 를
+        그 국면에 그대로 쓰면 정규형 프레임의 행동 인덱스가 나온다.
         """
         ...
 
     def to_canonical_action_index(self, position: PositionT, index: int) -> int:
-        """`position` 프레임의 행동 인덱스를 정규형 프레임으로 옮긴다."""
+        """`position` 프레임의 행동 인덱스를 정규형 프레임으로 옮긴다.
+
+        행동 공간 안의 인덱스면 합법수가 아니어도 옮긴다. 공간 밖의 인덱스이거나
+        `position` 이 `canonical` 이 돌려준 국면이면 `ValueError` 다.
+        """
         ...
 
     def from_canonical_action_index(self, position: PositionT, index: int) -> int:
         """정규형 프레임의 행동 인덱스를 `position` 프레임으로 되돌린다.
 
-        신경망 출력을 실제 수로 되돌리는 쪽이다. `to_canonical_action_index` 의 역이다.
+        신경망 출력을 실제 수로 되돌리는 쪽이다. `to_canonical_action_index` 의 역이고
+        같은 입력을 거절한다. `position` 은 원래 국면이지 그 정규형이 아니다.
         """
         ...
 

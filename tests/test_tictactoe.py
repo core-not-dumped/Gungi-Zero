@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from games.base import Outcome, Player
-from games.tictactoe import TicTacToe, TicTacToePosition
+from games.tictactoe import TicTacToe, TicTacToeMove, TicTacToePosition
 
 INITIAL = """\
      a   b   c
@@ -155,7 +155,9 @@ def test_the_canonical_form_leaves_a_first_player_position_alone() -> None:
  1   .   .   .
 차례: ▲   ply: 1
 """)
-    assert game.canonical(position) == position
+    canonical = game.canonical(position)
+    assert game.render(canonical) == game.render(position)
+    assert canonical.player is position.player
 
 
 def test_the_tensor_puts_the_movers_marks_on_the_first_plane() -> None:
@@ -202,3 +204,9 @@ def test_different_move_orders_to_the_same_board_share_a_board_key() -> None:
         other = game.apply_move(other, game.parse_move(move))
     assert game.render(one) == game.render(other)
     assert game.board_key(one) == game.board_key(other)
+
+
+@pytest.mark.parametrize("square", [-1, 9])
+def test_a_move_off_the_board_has_no_action_index(square: int) -> None:
+    with pytest.raises(ValueError):
+        TicTacToe().action_index(TicTacToeMove(square))

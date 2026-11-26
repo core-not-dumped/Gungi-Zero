@@ -14,7 +14,6 @@ from dataclasses import dataclass, replace
 
 from games.base import Game, MoveT, PositionT
 from games.mini_gungi import (
-    COLUMNS,
     MINI_GUNGI,
     SYMBOLS,
     Gungi,
@@ -47,8 +46,10 @@ class Candidate:
     @property
     def setup_text(self) -> str:
         """선수 배치. 후수는 그 180° 회전이다."""
+        geometry = self.config.geometry
         return ", ".join(
-            f"{SYMBOLS[p.kind]} {COLUMNS[p.column]}{p.row + 1}" for p in self.config.setup
+            f"{SYMBOLS[p.kind]} {geometry.square_name(geometry.square(p.column, p.row))}"
+            for p in self.config.setup
         )
 
 
