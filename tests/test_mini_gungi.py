@@ -26,6 +26,7 @@ from games.mini_gungi import (
     Placement,
     VariantConfig,
 )
+from games.nano_gungi import NANO_GUNGI
 
 # 스펙 "텍스트 판 표기" 절의 그림 그대로다.
 SPEC_BOARD = """\
@@ -513,7 +514,9 @@ def random_walk(
         position = after
 
 
-@pytest.mark.parametrize("config", [SINGLE_TIER, MINI_GUNGI], ids=["single-tier", "mini"])
+@pytest.mark.parametrize(
+    "config", [SINGLE_TIER, MINI_GUNGI, NANO_GUNGI], ids=["single-tier", "mini", "nano"]
+)
 @given(picks=st.lists(st.integers(min_value=0, max_value=2**20), max_size=60))
 def test_pieces_only_leave_the_board_by_being_captured(
     config: VariantConfig, picks: list[int]
@@ -529,7 +532,9 @@ def test_pieces_only_leave_the_board_by_being_captured(
         assert pieces(towers_by_square(game, after)) == pieces(before) - Counter(captured)
 
 
-@pytest.mark.parametrize("config", [SINGLE_TIER, MINI_GUNGI], ids=["single-tier", "mini"])
+@pytest.mark.parametrize(
+    "config", [SINGLE_TIER, MINI_GUNGI, NANO_GUNGI], ids=["single-tier", "mini", "nano"]
+)
 @given(picks=st.lists(st.integers(min_value=0, max_value=2**20), max_size=60))
 def test_towers_stay_within_the_tier_limit_with_any_marshal_on_top(
     config: VariantConfig, picks: list[int]
@@ -542,7 +547,9 @@ def test_towers_stay_within_the_tier_limit_with_any_marshal_on_top(
 
 
 @pytest.mark.parametrize(
-    "config", [MARSHAL_ONLY, SINGLE_TIER, MINI_GUNGI], ids=["marshal-only", "single-tier", "mini"]
+    "config",
+    [MARSHAL_ONLY, SINGLE_TIER, MINI_GUNGI, NANO_GUNGI],
+    ids=["marshal-only", "single-tier", "mini", "nano"],
 )
 @given(picks=st.lists(st.integers(min_value=0, max_value=2**20), max_size=60))
 def test_the_planes_add_up_to_the_pieces_on_the_board(
@@ -554,9 +561,13 @@ def test_the_planes_add_up_to_the_pieces_on_the_board(
         assert game.encode(after)[:16].sum() == on_board
 
 
-@pytest.mark.parametrize("config", [SINGLE_TIER, MINI_GUNGI], ids=["single-tier", "mini"])
+@pytest.mark.parametrize(
+    "config", [SINGLE_TIER, MINI_GUNGI, NANO_GUNGI], ids=["single-tier", "mini", "nano"]
+)
 @pytest.mark.parametrize("seed", range(50))
-def test_a_random_episode_with_all_four_kinds_ends(config: VariantConfig, seed: int) -> None:
+def test_a_random_episode_with_pieces_besides_marshals_ends(
+    config: VariantConfig, seed: int
+) -> None:
     episode = play_random_episode(Gungi(config), seed)
     assert len(episode.moves) <= config.move_limit
 
