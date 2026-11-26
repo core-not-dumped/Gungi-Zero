@@ -20,6 +20,7 @@ from games.base import Outcome, Player
 
 __all__ = [
     "MARSHAL_ONLY",
+    "SINGLE_TIER",
     "Gungi",
     "GungiMove",
     "GungiPosition",
@@ -34,6 +35,22 @@ MARSHAL_ONLY = VariantConfig(
     height=5,
     max_tier=2,
     setup=(Placement(PieceType.MARSHAL, column=2, row=0),),
+    move_limit=200,
+    repetition_limit=3,
+)
+
+# 네 말을 모두 올리고 쌓기를 뺀 변형. 배치와 말 개수는 노브다 — 1단계 끝에 측정으로 확정한다.
+SINGLE_TIER = VariantConfig(
+    width=5,
+    height=5,
+    max_tier=1,
+    setup=(
+        Placement(PieceType.GENERAL, column=1, row=0),
+        Placement(PieceType.MARSHAL, column=2, row=0),
+        Placement(PieceType.LANCE, column=3, row=0),
+        Placement(PieceType.PAWN, column=1, row=1),
+        Placement(PieceType.PAWN, column=3, row=1),
+    ),
     move_limit=200,
     repetition_limit=3,
 )

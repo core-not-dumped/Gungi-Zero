@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from engine.movement import MOVEMENT
 from engine.pieces import Piece, PieceType, Side
 from engine.position import Position, Tower
 from engine.variant import VariantConfig
@@ -24,19 +25,13 @@ class Result:
     winner: Side | None
 
 
-# 1단에서 한 번에 갈 수 있는 (열, 행) 이동. 06 번 티켓이 사거리 표로 바꾼다.
-STEPS: dict[PieceType, tuple[tuple[int, int], ...]] = {
-    PieceType.MARSHAL: (
-        (-1, -1),
-        (0, -1),
-        (1, -1),
-        (-1, 0),
-        (1, 0),
-        (-1, 1),
-        (0, 1),
-        (1, 1),
-    ),
-}
+def blocks_path(mover_tier: int, occupant: Tower) -> bool:
+    """`mover_tier` 단의 말이 `occupant` 가 있는 칸을 지나 더 갈 수 없는지.
+
+    점유된 칸은 단수와 무관하게 막는다 (ADR-0002). 그래서 지금은 `mover_tier` 를 보지 않는다 —
+    다른 해석과 A/B 할 때 이 술어만 바꾼다.
+    """
+    return bool(occupant)
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,27 +104,43 @@ class RuleEngine:
         )
 
     def _targets(self, position: Position, source: int) -> list[int]:
+        """`source` 의 맨 위 말이 갈 수 있는 칸. 빈칸으로의 이동과 적 말 잡기가 같은 길이다."""
         tower = position.board[source]
         self._require_single_tier(tower)
-        kind = tower[-1].kind
-        if kind not in STEPS:
-            raise NotImplementedError(f"아직 이동 규칙이 없는 말이다: {kind.name} (06 번 티켓)")
+        mover = tower[-1]
+        # 표의 앞은 선수의 앞이다. 후수는 180° 돌려 본다 (ADR-0003).
+        facing = 1 if mover.owner is Side.FIRST else -1
+        # 판의 긴 변만큼 가면 어느 방향이든 판 밖이다.
+        board_span = max(self.config.width, self.config.height)
 
         row, column = divmod(source, self.config.width)
         targets: list[int] = []
-        for column_step, row_step in STEPS[kind]:
-            to_column, to_row = column + column_step, row + row_step
-            if not (0 <= to_column < self.config.width and 0 <= to_row < self.config.height):
-                continue
-            target = to_row * self.config.width + to_column
-            occupant = position.board[target]
-            if occupant:
-                self._require_single_tier(occupant)
-                if occupant[-1].owner is position.side:
-                    continue
-            targets.append(target)
+        for ray in MOVEMENT[mover.kind]:
+            reach = board_span if ray.reach is None else ray.reach
+            for distance in range(1, reach + 1):
+                to_column = column + facing * ray.column_step * distance
+                to_row = row + facing * ray.row_step * distance
+                if not (0 <= to_column < self.config.width and 0 <= to_row < self.config.height):
+                    break
+                target = to_row * self.config.width + to_column
+                occupant = position.board[target]
+                if occupant:
+                    self._require_single_tier(occupant)
+                    if occupant[-1].owner is not position.side:
+                        targets.append(target)
+                    else:
+                        self._fail_if_stackable(mover, occupant[-1])
+                else:
+                    targets.append(target)
+                if blocks_path(len(tower), occupant):
+                    break
         return targets
 
     def _require_single_tier(self, tower: Tower) -> None:
         if len(tower) > 1:
             raise NotImplementedError("탑의 규칙은 아직 없다 (07 번 티켓)")
+
+    def _fail_if_stackable(self, mover: Piece, below: Piece) -> None:
+        """아군 위에 쌓을 수 있는 수를 조용히 빠뜨리지 않는다. 帥 가 끼면 쌓기는 없다."""
+        if self.config.max_tier > 1 and PieceType.MARSHAL not in (mover.kind, below.kind):
+            raise NotImplementedError("쌓기 규칙은 아직 없다 (07 번 티켓)")

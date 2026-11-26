@@ -1,5 +1,6 @@
 """군의 fixture 테스트. `games.base.Game` 으로만 게임을 보고 판은 텍스트 렌더로 읽는다."""
 
+from collections import Counter
 from dataclasses import replace
 
 import numpy as np
@@ -8,10 +9,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from ai.random_play import play_random_episode
-from engine.rules import STEPS
 from games.base import Outcome
 from games.mini_gungi import (
     MARSHAL_ONLY,
+    SINGLE_TIER,
     Gungi,
     GungiPosition,
     PieceType,
@@ -30,21 +31,8 @@ SPEC_BOARD = """\
 차례: ▲   ply: 1
 """
 
-# 帥 말고는 아직 움직일 수 없지만(06 번 티켓), 판을 놓고 읽고 쓰는 데는 쓸 수 있다.
-FOUR_KINDS = VariantConfig(
-    width=5,
-    height=5,
-    max_tier=2,
-    setup=(
-        Placement(PieceType.GENERAL, column=1, row=0),
-        Placement(PieceType.MARSHAL, column=2, row=0),
-        Placement(PieceType.LANCE, column=3, row=0),
-        Placement(PieceType.PAWN, column=1, row=1),
-        Placement(PieceType.PAWN, column=3, row=1),
-    ),
-    move_limit=200,
-    repetition_limit=3,
-)
+# 판을 놓고 읽고 쓰는 데 쓴다. 쌓기가 아직 없어(07 번 티켓) 수를 낼 때는 `SINGLE_TIER` 를 쓴다.
+FOUR_KINDS = replace(SINGLE_TIER, max_tier=2)
 
 
 def notation(game: Gungi, position: GungiPosition) -> set[str]:
@@ -370,19 +358,50 @@ def test_the_board_key_ignores_the_path_but_the_position_does_not(picks: list[in
         assert pathless != position
 
 
-def test_a_player_without_a_legal_move_loses(monkeypatch: pytest.MonkeyPatch) -> None:
-    # 帥 만 움직일 줄 아는 지금은 둘 수 없는 판을 만들 수 없어 이동표를 비운다.
-    # 06 번 티켓이 들어오면 판 fixture 로 바꾼다.
-    monkeypatch.setitem(STEPS, PieceType.MARSHAL, ())
-    game = Gungi(MARSHAL_ONLY)
-    first = game.initial_position()
-    assert game.outcome(first) is Outcome.SECOND_WINS
-    assert game.legal_moves(first) == ()
-    second = game.parse(game.render(first).replace("차례: ▲", "차례: ▽"))
-    assert game.outcome(second) is Outcome.FIRST_WINS
-    # 수 제한에 닿은 국면이어도 둘 수가 없으면 패배다.
-    last = game.parse(game.render(first).replace("ply: 0", "ply: 200"))
-    assert game.outcome(last) is Outcome.SECOND_WINS
+@pytest.mark.parametrize(
+    ("turn", "rows", "outcome"),
+    [
+        # a·b 열이 ▲ 로 꽉 차 있다. 兵 은 위아래로만 가고, 帥 의 이웃도 전부 아군이다.
+        (
+            "▲",
+            (
+                " 5  ▲兵     ▲兵      .       .      ▽帥",
+                " 4  ▲兵     ▲兵      .       .       .",
+                " 3  ▲兵     ▲兵      .       .       .",
+                " 2  ▲兵     ▲兵      .       .       .",
+                " 1  ▲帥     ▲兵      .       .       .",
+            ),
+            Outcome.SECOND_WINS,
+        ),
+        # 같은 판을 180° 돌린 것.
+        (
+            "▽",
+            (
+                " 5   .       .       .      ▽兵     ▽帥",
+                " 4   .       .       .      ▽兵     ▽兵",
+                " 3   .       .       .      ▽兵     ▽兵",
+                " 2   .       .       .      ▽兵     ▽兵",
+                " 1  ▲帥      .       .      ▽兵     ▽兵",
+            ),
+            Outcome.FIRST_WINS,
+        ),
+    ],
+    ids=["first", "second"],
+)
+# 수 제한에 닿은 국면이어도 둘 수가 없으면 패배다.
+@pytest.mark.parametrize("ply", [0, 200])
+def test_a_player_without_a_legal_move_loses(
+    turn: str, rows: tuple[str, ...], outcome: Outcome, ply: int
+) -> None:
+    game = Gungi(SINGLE_TIER)
+    board = "\n".join(rows)
+    position = game.parse(f"""\
+     a       b       c       d       e
+{board}
+차례: {turn}   ply: {ply}
+""")
+    assert game.legal_moves(position) == ()
+    assert game.outcome(position) is outcome
 
 
 def test_the_tensor_counts_earlier_appearances_of_the_board() -> None:
@@ -571,10 +590,10 @@ def test_a_variant_with_more_tiers_than_the_planes_hold_is_refused() -> None:
 @pytest.mark.parametrize(
     "row_two",
     [
-        # 06 번 티켓 전에는 帥 말고는 움직일 줄 모른다. 07 번 전에는 탑이 있으면 둘 수 없다.
-        " 2   .      ▲兵      .       .       .",
+        # 07 번 티켓 전에는 탑이 있거나 아군 위에 쌓을 수 있는 판에서 수를 낼 수 없다.
         " 2   .    ▲兵/▽大    .       .       .",
         " 2   .    ▽兵/▽大    .       .       .",
+        " 2  ▲兵     ▲大      .       .       .",
     ],
 )
 def test_rules_that_do_not_exist_yet_fail_loudly(row_two: str) -> None:
@@ -590,3 +609,276 @@ def test_rules_that_do_not_exist_yet_fail_loudly(row_two: str) -> None:
 """)
     with pytest.raises(NotImplementedError):
         game.legal_moves(position)
+
+
+# ── 말 4종의 1단 이동표와 막힘 ──
+# 帥 의 이동표 fixture 는 위의 `test_a_marshal_steps_one_square_in_all_eight_directions` 다.
+
+
+def test_a_general_slides_in_straight_lines_and_steps_one_diagonally() -> None:
+    game = Gungi(SINGLE_TIER)
+    position = game.parse("""\
+     a       b       c       d       e
+ 5   .       .       .       .      ▽帥
+ 4   .       .       .       .       .
+ 3   .       .      ▲大      .       .
+ 2   .       .       .       .       .
+ 1  ▲帥      .       .       .       .
+차례: ▲   ply: 0
+""")
+    assert notation(game, position) == {
+        # 大 의 직선은 끝까지.
+        *("c3-c4", "c3-c5", "c3-c2", "c3-c1", "c3-b3", "c3-a3", "c3-d3", "c3-e3"),
+        # 大 의 대각은 한 칸.
+        *("c3-b4", "c3-d4", "c3-b2", "c3-d2"),
+        # 帥
+        *("a1-a2", "a1-b1", "a1-b2"),
+    }
+
+
+@pytest.mark.parametrize(
+    ("board", "expected"),
+    [
+        (
+            """\
+     a       b       c       d       e
+ 5   .       .       .       .      ▽帥
+ 4   .       .       .       .       .
+ 3   .       .       .       .       .
+ 2   .       .      ▲槍      .       .
+ 1  ▲帥      .       .       .       .
+차례: ▲   ply: 0
+""",
+            {
+                # 槍 은 전방 둘, 전방대각 하나, 후방 하나. 측면·후방대각은 없다.
+                *("c2-c3", "c2-c4", "c2-b3", "c2-d3", "c2-c1"),
+                # 帥
+                *("a1-a2", "a1-b1", "a1-b2"),
+            },
+        ),
+        # ▽ 의 앞은 1 행 쪽이다.
+        (
+            """\
+     a       b       c       d       e
+ 5   .       .       .       .      ▽帥
+ 4   .       .      ▽槍      .       .
+ 3   .       .       .       .       .
+ 2   .       .       .       .       .
+ 1  ▲帥      .       .       .       .
+차례: ▽   ply: 1
+""",
+            {
+                *("c4-c3", "c4-c2", "c4-d3", "c4-b3", "c4-c5"),
+                *("e5-e4", "e5-d5", "e5-d4"),
+            },
+        ),
+    ],
+    ids=["first", "second"],
+)
+def test_a_lance_moves_mostly_forward(board: str, expected: set[str]) -> None:
+    game = Gungi(SINGLE_TIER)
+    assert notation(game, game.parse(board)) == expected
+
+
+@pytest.mark.parametrize(
+    ("turn", "expected"),
+    [
+        ("▲", {"c2-c3", "c2-c1", "a1-a2", "a1-b1", "a1-b2"}),
+        ("▽", {"c4-c3", "c4-c5", "e5-e4", "e5-d5", "e5-d4"}),
+    ],
+    ids=["first", "second"],
+)
+def test_a_pawn_steps_one_square_forward_or_backward(turn: str, expected: set[str]) -> None:
+    game = Gungi(SINGLE_TIER)
+    position = game.parse(f"""\
+     a       b       c       d       e
+ 5   .       .       .       .      ▽帥
+ 4   .       .      ▽兵      .       .
+ 3   .       .       .       .       .
+ 2   .       .      ▲兵      .       .
+ 1  ▲帥      .       .       .       .
+차례: {turn}   ply: 0
+""")
+    assert notation(game, position) == expected
+
+
+def test_an_occupied_square_blocks_the_way_and_only_an_enemy_can_be_taken() -> None:
+    game = Gungi(SINGLE_TIER)
+    position = game.parse("""\
+     a       b       c       d       e
+ 5   .       .       .       .      ▽帥
+ 4   .       .      ▽兵      .       .
+ 3   .      ▲兵     ▲大     ▽槍      .
+ 2   .      ▲兵      .      ▽兵      .
+ 1  ▲帥      .      ▲兵      .       .
+차례: ▲   ply: 0
+""")
+    assert notation(game, position) == {
+        # 大 은 위·오른쪽의 적을 잡고 거기서 멈춘다 (c5, e3 에는 못 간다).
+        *("c3-c4", "c3-d3"),
+        # 아래는 아군 c1 앞까지다. 왼쪽은 바로 옆이 아군이라 못 간다 (a3 도 못 간다).
+        "c3-c2",
+        # 대각. b2 는 아군이다.
+        *("c3-b4", "c3-d4", "c3-d2"),
+        # 兵 b3, b2, c1
+        *("b3-b4", "b2-b1", "c1-c2"),
+        # 帥
+        *("a1-a2", "a1-b1"),
+    }
+
+
+@pytest.mark.parametrize(
+    ("board", "expected"),
+    [
+        (
+            """\
+     a       b       c       d       e
+ 5   .       .       .       .      ▽帥
+ 4   .       .       .       .       .
+ 3   .       .       .       .       .
+ 2   .       .      ▲槍      .       .
+ 1  ▲帥      .       .       .       .
+차례: ▲   ply: 0
+""",
+            {
+                # 槍 전방
+                *(
+                    "c2-c3",
+                    "c2-c4",
+                ),
+                # 槍 전방대각과 후방
+                *("c2-b3", "c2-d3", "c2-c1"),
+                # 帥
+                *("a1-a2", "a1-b1", "a1-b2"),
+            },
+        ),
+        # 바로 앞의 아군은 뛰어넘지 못한다.
+        (
+            """\
+     a       b       c       d       e
+ 5   .       .       .       .      ▽帥
+ 4   .       .       .       .       .
+ 3   .       .      ▲兵      .       .
+ 2   .       .      ▲槍      .       .
+ 1  ▲帥      .       .       .       .
+차례: ▲   ply: 0
+""",
+            {
+                # 槍 전방대각과 후방
+                *("c2-b3", "c2-d3", "c2-c1"),
+                # 兵
+                "c3-c4",
+                # 帥
+                *("a1-a2", "a1-b1", "a1-b2"),
+            },
+        ),
+        # 바로 앞의 적은 잡고 거기서 멈춘다.
+        (
+            """\
+     a       b       c       d       e
+ 5   .       .       .       .      ▽帥
+ 4   .       .       .       .       .
+ 3   .       .      ▽兵      .       .
+ 2   .       .      ▲槍      .       .
+ 1  ▲帥      .       .       .       .
+차례: ▲   ply: 0
+""",
+            {
+                # 槍 전방
+                "c2-c3",
+                # 槍 전방대각과 후방
+                *("c2-b3", "c2-d3", "c2-c1"),
+                # 帥
+                *("a1-a2", "a1-b1", "a1-b2"),
+            },
+        ),
+        # 두 칸 앞의 아군 앞까지만 간다.
+        (
+            """\
+     a       b       c       d       e
+ 5   .       .       .       .      ▽帥
+ 4   .       .      ▲兵      .       .
+ 3   .       .       .       .       .
+ 2   .       .      ▲槍      .       .
+ 1  ▲帥      .       .       .       .
+차례: ▲   ply: 0
+""",
+            {
+                # 槍 전방
+                "c2-c3",
+                # 槍 전방대각과 후방
+                *("c2-b3", "c2-d3", "c2-c1"),
+                # 兵
+                *("c4-c3", "c4-c5"),
+                # 帥
+                *("a1-a2", "a1-b1", "a1-b2"),
+            },
+        ),
+        # 두 칸 앞의 적은 잡는다.
+        (
+            """\
+     a       b       c       d       e
+ 5   .       .       .       .      ▽帥
+ 4   .       .      ▽兵      .       .
+ 3   .       .       .       .       .
+ 2   .       .      ▲槍      .       .
+ 1  ▲帥      .       .       .       .
+차례: ▲   ply: 0
+""",
+            {
+                # 槍 전방
+                *(
+                    "c2-c3",
+                    "c2-c4",
+                ),
+                # 槍 전방대각과 후방
+                *("c2-b3", "c2-d3", "c2-c1"),
+                # 帥
+                *("a1-a2", "a1-b1", "a1-b2"),
+            },
+        ),
+    ],
+    ids=["open", "friend-near", "enemy-near", "friend-far", "enemy-far"],
+)
+def test_a_lance_slides_forward_and_does_not_jump(board: str, expected: set[str]) -> None:
+    game = Gungi(SINGLE_TIER)
+    assert notation(game, game.parse(board)) == expected
+
+
+def pieces_by_square(game: Gungi, position: GungiPosition) -> dict[str, str]:
+    """렌더에서 읽은 `칸 → 말`. 빈칸은 빠진다."""
+    header, *rows, _turn = game.render(position).splitlines()
+    columns = header.split()
+    squares: dict[str, str] = {}
+    for line in rows:
+        row, *cells = line.split()
+        squares.update(
+            {column + row: cell for column, cell in zip(columns, cells, strict=True) if cell != "."}
+        )
+    return squares
+
+
+@given(picks=st.lists(st.integers(min_value=0, max_value=2**20), max_size=60))
+def test_pieces_only_leave_the_board_by_being_captured(picks: list[int]) -> None:
+    game = Gungi(SINGLE_TIER)
+    position = game.initial_position()
+    for pick in picks:
+        moves = game.legal_moves(position)
+        if not moves:
+            break
+        move = moves[pick % len(moves)]
+        before = pieces_by_square(game, position)
+        captured = before.get(game.render_move(move).split("-")[1])
+        position = game.apply_move(position, move)
+        after = pieces_by_square(game, position)
+        assert Counter(after.values()) == Counter(before.values()) - Counter(
+            [captured] if captured else []
+        )
+        # 잡히는 것은 언제나 상대 말이다. 수를 둔 뒤의 차례가 그 상대다.
+        assert captured is None or captured.startswith(position.player.value)
+
+
+@pytest.mark.parametrize("seed", range(50))
+def test_a_random_episode_with_all_four_kinds_ends(seed: int) -> None:
+    episode = play_random_episode(Gungi(SINGLE_TIER), seed)
+    assert len(episode.moves) <= SINGLE_TIER.move_limit

@@ -16,13 +16,14 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from games.base import Game, Outcome, Player
-from games.mini_gungi import MARSHAL_ONLY, Gungi
+from games.mini_gungi import MARSHAL_ONLY, SINGLE_TIER, Gungi
 from games.tictactoe import TicTacToe
 
 # 새 게임은 여기에 더한다. 적합성 스위트 전체가 그 게임에도 돈다.
 GAMES: list[Any] = [
     pytest.param(TicTacToe(), id="tictactoe"),
     pytest.param(Gungi(MARSHAL_ONLY), id="gungi-marshal-only"),
+    pytest.param(Gungi(SINGLE_TIER), id="gungi-single-tier"),
 ]
 
 # 합법수 목록에서 몇 번째를 고를지의 나열. 게임마다 분기 수가 달라 나머지로 접는다.
