@@ -5,20 +5,10 @@ from dataclasses import replace
 import pytest
 
 from eval.reachable import StateCount, count_reachable
-from games.mini_gungi import MINI_GUNGI, Gungi, PieceType, Placement, VariantConfig
+from games.mini_gungi import MINI_GUNGI, Gungi
 from games.tictactoe import TicTacToe
 from scripts.state_space import CANDIDATES, main
-
-# 3x1 판에 帥 둘. 가운데를 사이에 두고 마주 본다. 선수의 유일한 수는 b1 로 가는 것이고,
-# 후수는 그 帥 를 잡는 수 하나뿐이다. 그래서 국면은 셋이다.
-FACING_MARSHALS = VariantConfig(
-    width=3,
-    height=1,
-    max_tier=2,
-    setup=(Placement(PieceType.MARSHAL, column=0, row=0),),
-    move_limit=200,
-    repetition_limit=3,
-)
+from tests.solver_helpers import FACING_MARSHALS
 
 
 def test_the_tictactoe_count_matches_the_known_number_of_reachable_positions() -> None:
