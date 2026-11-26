@@ -48,7 +48,7 @@ def test_the_game_holds_no_state() -> None:
 
 
 def test_nothing_in_games_or_ai_pulls_in_torch() -> None:
-    """경계를 넘는 표현은 ndarray 다 (ADR-0001). import 그래프 전체 검사는 05 번 티켓이다."""
+    """경계를 넘는 표현은 ndarray 다 (ADR-0001). 의존 방향은 `test_import_boundaries.py` 가 본다."""
     import ai.random_play  # noqa: F401
     import games.mini_gungi
     import games.tictactoe  # noqa: F401
