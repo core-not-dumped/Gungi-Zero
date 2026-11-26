@@ -5,6 +5,7 @@ import sys
 import pytest
 
 from games.base import Game, Outcome, Player
+from games.mini_gungi import MARSHAL_ONLY, Gungi, GungiMove, GungiPosition
 from games.tictactoe import TicTacToe, TicTacToeMove, TicTacToePosition
 
 
@@ -12,6 +13,11 @@ def test_tictactoe_satisfies_the_game_protocol() -> None:
     """pyright 가 검사하는 쪽이 본문이다 — `Game` 은 구조적 프로토콜이라 상속이 없다."""
     game: Game[TicTacToePosition, TicTacToeMove] = TicTacToe()
     assert game.action_space_size == 9
+
+
+def test_gungi_satisfies_the_game_protocol() -> None:
+    game: Game[GungiPosition, GungiMove] = Gungi(MARSHAL_ONLY)
+    assert game.action_space_size == 625
 
 
 @pytest.mark.parametrize("player", list(Player))
@@ -44,6 +50,7 @@ def test_the_game_holds_no_state() -> None:
 def test_nothing_in_games_or_ai_pulls_in_torch() -> None:
     """경계를 넘는 표현은 ndarray 다 (ADR-0001). import 그래프 전체 검사는 05 번 티켓이다."""
     import ai.random_play  # noqa: F401
+    import games.mini_gungi
     import games.tictactoe  # noqa: F401
 
     assert "torch" not in sys.modules
