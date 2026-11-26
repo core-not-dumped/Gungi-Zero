@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from games.base import Game, Outcome, Player
+from games.base import BoardOutcomeGame, Game, Outcome, Player
 from games.mini_gungi import MARSHAL_ONLY, Gungi, GungiMove, GungiPosition
 from games.tictactoe import TicTacToe, TicTacToeMove, TicTacToePosition
 
@@ -22,6 +22,18 @@ def test_tictactoe_satisfies_the_game_protocol() -> None:
 def test_gungi_satisfies_the_game_protocol() -> None:
     game: Game[GungiPosition, GungiMove] = Gungi(MARSHAL_ONLY)
     assert game.action_space_size == 1250
+
+
+def test_both_games_can_say_how_the_board_alone_ends_them() -> None:
+    """선택적 프로토콜이다. 역시 pyright 가 검사하는 쪽이 본문이다."""
+    tictactoe: BoardOutcomeGame[TicTacToePosition, TicTacToeMove] = TicTacToe()
+    gungi: BoardOutcomeGame[GungiPosition, GungiMove] = Gungi(MARSHAL_ONLY)
+    assert tictactoe.board_outcome(tictactoe.initial_position()) is None
+    assert gungi.board_outcome(gungi.initial_position()) is None
+
+
+def test_the_game_protocol_does_not_require_a_board_outcome() -> None:
+    assert not hasattr(Game, "board_outcome")
 
 
 @pytest.mark.parametrize("player", list(Player))

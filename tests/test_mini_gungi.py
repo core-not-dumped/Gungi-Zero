@@ -190,6 +190,7 @@ def test_reaching_the_move_limit_is_a_draw() -> None:
     assert game.outcome(position) is None
     position = play(game, position, "b5-c5")
     assert game.outcome(position) is Outcome.DRAW
+    assert game.board_outcome(position) is None
     assert game.legal_moves(position) == ()
     with pytest.raises(ValueError):
         play(game, position, "c1-b1")
@@ -209,6 +210,7 @@ def test_the_repetition_limit_comes_from_the_variant() -> None:
     game = Gungi(replace(MARSHAL_ONLY, repetition_limit=2))
     position = play(game, game.initial_position(), *ROUND_TRIP)
     assert game.outcome(position) is Outcome.DRAW
+    assert game.board_outcome(position) is None
     with pytest.raises(ValueError):
         play(game, position, "c1-b1")
 

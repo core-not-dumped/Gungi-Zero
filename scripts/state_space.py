@@ -12,7 +12,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
-from games.base import Game, MoveT, PositionT
+from eval.reachable import count_reachable
 from games.mini_gungi import (
     MINI_GUNGI,
     SYMBOLS,
@@ -82,53 +82,6 @@ CANDIDATES = (
     # 비교 기준: 미니 군의 그대로.
     Candidate(MINI_GUNGI, measured=False),
 )
-
-
-@dataclass(frozen=True)
-class StateCount:
-    """상태는 `board_key`(판 + 차례)다. `ply` 와 경로는 세지 않는다."""
-
-    states: int
-    # 그중 둘 수가 없는 (끝난) 상태.
-    terminal: int
-    # 가장 먼 상태까지의 최단 수 개수.
-    depth: int
-    # 거짓이면 상한에서 멈춘 것이고, 위의 값들은 거기까지 본 것이다.
-    complete: bool
-
-
-def count_reachable(game: Game[PositionT, MoveT], limit: int) -> StateCount:
-    """너비 우선으로 센다. `limit` 개를 넘는 상태가 있으면 `limit` 개에서 멈춘다.
-
-    각 상태는 가장 짧은 경로로 처음 닿는다. 그 경로에는 같은 `board_key` 가 두 번 나오지
-    않으므로 반복 규칙이 세는 것을 가로막지 않는다. 수 제한은 규칙 그대로 적용된다.
-    """
-    if limit < 1:
-        raise ValueError(f"상한은 1 이상이다: {limit}")
-    start = game.initial_position()
-    seen = {game.board_key(start)}
-    frontier = [start]
-    terminal = 0
-    depth = 0
-    while True:
-        following: list[PositionT] = []
-        for position in frontier:
-            moves = game.legal_moves(position)
-            if not moves:
-                terminal += 1
-            for move in moves:
-                child = game.apply_move(position, move)
-                key = game.board_key(child)
-                if key in seen:
-                    continue
-                if len(seen) == limit:
-                    return StateCount(limit, terminal, depth + bool(following), complete=False)
-                seen.add(key)
-                following.append(child)
-        if not following:
-            return StateCount(len(seen), terminal, depth, complete=True)
-        frontier = following
-        depth += 1
 
 
 def main(argv: Sequence[str] | None = None) -> int:

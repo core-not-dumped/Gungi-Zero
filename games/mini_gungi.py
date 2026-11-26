@@ -14,7 +14,7 @@ import numpy.typing as npt
 from engine.geometry import COLUMN_NAMES, BoardGeometry
 from engine.pieces import Piece, PieceType, Side
 from engine.position import Position, Tower
-from engine.rules import EndReason, RuleEngine
+from engine.rules import EndReason, Result, RuleEngine
 from engine.rules import Move as GungiMove
 from engine.variant import Placement, VariantConfig
 from games.base import Outcome, Player
@@ -108,6 +108,15 @@ class GungiPosition:
     @property
     def ply(self) -> int:
         return self.engine_position.ply
+
+
+def _outcome(result: Result | None) -> Outcome | None:
+    """엔진의 결과를 `games.base` 의 결과로."""
+    if result is None:
+        return None
+    if result.winner is None:
+        return Outcome.DRAW
+    return Outcome.win_for(PLAYERS[result.winner])
 
 
 def _display_width(text: str) -> int:
@@ -242,12 +251,10 @@ class Gungi:
         return GungiPosition(self._engine.apply_move(position.engine_position, move))
 
     def outcome(self, position: GungiPosition) -> Outcome | None:
-        result = self._engine.result(position.engine_position)
-        if result is None:
-            return None
-        if result.winner is None:
-            return Outcome.DRAW
-        return Outcome.win_for(PLAYERS[result.winner])
+        return _outcome(self._engine.result(position.engine_position))
+
+    def board_outcome(self, position: GungiPosition) -> Outcome | None:
+        return _outcome(self._engine.board_result(position.engine_position))
 
     def end_reason(self, position: GungiPosition) -> EndReason | None:
         """끝난 사유. 진행 중이면 `None` 이다. 측정 보고용이며 `Game` 프로토콜에는 없다."""

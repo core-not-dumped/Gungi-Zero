@@ -2,6 +2,8 @@
 
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from games.base import Outcome, Player
 from games.tictactoe import TicTacToe, TicTacToeMove, TicTacToePosition
@@ -210,3 +212,16 @@ def test_different_move_orders_to_the_same_board_share_a_board_key() -> None:
 def test_a_move_off_the_board_has_no_action_index(square: int) -> None:
     with pytest.raises(ValueError):
         TicTacToe().action_index(TicTacToeMove(square))
+
+
+@given(picks=st.lists(st.integers(min_value=0, max_value=8), max_size=9))
+def test_every_tictactoe_ending_is_decided_by_the_board(picks: list[int]) -> None:
+    game = TicTacToe()
+    position = game.initial_position()
+    for pick in picks:
+        assert game.board_outcome(position) is game.outcome(position)
+        moves = game.legal_moves(position)
+        if not moves:
+            break
+        position = game.apply_move(position, moves[pick % len(moves)])
+    assert game.board_outcome(position) is game.outcome(position)

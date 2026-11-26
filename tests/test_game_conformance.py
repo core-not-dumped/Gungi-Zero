@@ -1,7 +1,8 @@
 """게임에 대해 파라미터화된 적합성 스위트.
 
 이 스위트가 "`games.base.Game` 을 구현했다" 의 정의다. 새 게임을 붙일 때 `GAMES` 에 한 줄
-더하고 통과시킨다. 테스트는 `games.base.Game` 을 통해서만 게임을 보고, 판을 읽을 때는
+더하고 통과시킨다. `board_outcome` 검사만은 선택적 프로토콜 `games.base.BoardOutcomeGame` 의
+것이다 — 지금 게임은 모두 구현한다. 테스트는 이 두 프로토콜을 통해서만 게임을 보고, 판을 읽을 때는
 텍스트 렌더를 쓴다 — 텐서로 읽으면 인코딩 버그와 룰 버그가 섞인다.
 
 게임마다 타입이 달라 여기서는 `Game[Any, Any]` 로 받는다. 프로토콜에 구조적으로 맞는지는
@@ -178,10 +179,12 @@ def swapped(outcome: Outcome | None) -> Outcome | None:
     return Outcome.win_for(outcome.winner.opponent)
 
 
-def check_the_frames_agree_on_the_result(game: Game[Any, Any], position: Any) -> None:
-    outcome = game.outcome(position)
-    expected = outcome if position.player is Player.FIRST else swapped(outcome)
-    assert game.outcome(game.canonical(position)) is expected
+def check_the_frames_agree_on_the_result(game: Any, position: Any) -> None:
+    canonical = game.canonical(position)
+    for ask in (game.outcome, game.board_outcome):
+        result = ask(position)
+        expected = result if position.player is Player.FIRST else swapped(result)
+        assert ask(canonical) is expected
 
 
 @pytest.mark.parametrize("game", GAMES)
@@ -203,6 +206,32 @@ def test_finished_episodes_keep_their_winner_across_frames(game: Game[Any, Any])
         if game.outcome(final) is not Outcome.DRAW:
             decided.add(final.player)
     assert Player.SECOND in decided, "승패가 뒤바뀌는 경우가 한 번도 나오지 않았다"
+
+
+def check_the_board_outcome_agrees_with_the_outcome(game: Any, position: Any) -> None:
+    board_outcome = game.board_outcome(position)
+    if board_outcome is None:
+        # 이력이나 ply 로 끝난 것만 남는다. 그것은 무승부다.
+        assert game.outcome(position) in (None, Outcome.DRAW)
+    else:
+        assert game.outcome(position) is board_outcome
+
+
+@pytest.mark.parametrize("game", GAMES)
+@given(picks=PICKS)
+def test_the_board_outcome_never_contradicts_the_outcome(
+    game: Game[Any, Any], picks: list[int]
+) -> None:
+    for position in walk(game, picks):
+        check_the_board_outcome_agrees_with_the_outcome(game, position)
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_the_board_outcome_agrees_on_finished_episodes(game: Game[Any, Any]) -> None:
+    """끝난 국면은 짧은 무작위 걸음에 잘 안 나온다. 승리는 전부 판만으로 정해진다."""
+    for seed in range(100):
+        final = play_random_episode(game, seed).final_position
+        check_the_board_outcome_agrees_with_the_outcome(game, final)
 
 
 @pytest.mark.parametrize("game", GAMES)

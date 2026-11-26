@@ -101,6 +101,10 @@ class TicTacToe:
             return Outcome.DRAW
         return None
 
+    def board_outcome(self, position: TicTacToePosition) -> Outcome | None:
+        # 틱택토의 종료는 전부 판이 정한다.
+        return self.outcome(position)
+
     @property
     def action_space_size(self) -> int:
         return SQUARE_COUNT

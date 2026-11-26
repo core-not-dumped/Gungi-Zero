@@ -68,6 +68,13 @@ class RuleEngine:
         """끝난 국면의 결과, 진행 중이면 `None`."""
         return self._evaluate(position)[0]
 
+    def board_result(self, position: Position) -> Result | None:
+        """판 + 차례만으로 끝난 국면의 결과 (帥 잡기, 합법수 없음), 아니면 `None`.
+
+        반복과 수 제한은 보지 않는다.
+        """
+        return self._evaluate_board(position)[0]
+
     def legal_moves(self, position: Position) -> tuple[Move, ...]:
         """둘 수 있는 모든 수. 끝난 국면에서는 비어 있다."""
         return self._evaluate(position)[1]
@@ -78,6 +85,18 @@ class RuleEngine:
         승패를 무승부보다 먼저 본다. 마지막 수로 帥 를 잡으면 승리이고, 수 제한에 닿은
         국면이라도 둘 수가 없으면 패배다. 반복과 수 제한에 함께 닿으면 사유는 반복이다.
         """
+        result, moves = self._evaluate_board(position)
+        if result is not None:
+            return result, ()
+        # 한도는 지금 나온 것까지 센다.
+        if position.earlier_occurrences + 1 >= self.config.repetition_limit:
+            return Result(None, EndReason.REPETITION), ()
+        if position.ply >= self.config.move_limit:
+            return Result(None, EndReason.MOVE_LIMIT), ()
+        return None, moves
+
+    def _evaluate_board(self, position: Position) -> tuple[Result | None, tuple[Move, ...]]:
+        """`_evaluate` 에서 판 + 차례만 보는 부분. 끝나지 않았으면 말의 이동도 함께 낸다."""
         alive = {
             piece.owner
             for tower in position.board
@@ -90,11 +109,6 @@ class RuleEngine:
         moves = self._moves(position)
         if not moves:
             return Result(position.side.opponent, EndReason.NO_LEGAL_MOVES), ()
-        # 한도는 지금 나온 것까지 센다.
-        if position.earlier_occurrences + 1 >= self.config.repetition_limit:
-            return Result(None, EndReason.REPETITION), ()
-        if position.ply >= self.config.move_limit:
-            return Result(None, EndReason.MOVE_LIMIT), ()
         return None, moves
 
     def _moves(self, position: Position) -> tuple[Move, ...]:

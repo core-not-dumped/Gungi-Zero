@@ -58,3 +58,13 @@ def test_having_no_move_is_its_own_end_reason(name: str) -> None:
     game = Gungi(MINI_GUNGI)
     (fixture,) = (f for f in FIXTURES if f.name == name)
     assert game.end_reason(game.parse(fixture.board)) is EndReason.NO_LEGAL_MOVES
+
+
+@pytest.mark.parametrize(
+    "name", ["first-has-no-move", "second-has-no-move", "no-move-at-move-limit"]
+)
+def test_having_no_move_is_decided_by_the_board(name: str) -> None:
+    game = Gungi(MINI_GUNGI)
+    (fixture,) = (f for f in FIXTURES if f.name == name)
+    assert fixture.outcome not in (None, Outcome.DRAW)
+    assert game.board_outcome(game.parse(fixture.board)) is fixture.outcome

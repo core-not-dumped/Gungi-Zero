@@ -15,6 +15,7 @@
 | `player` | 후수 | 선수 |
 | `ply` | `p.ply` | 같다 |
 | `outcome` | 선수 승 / 후수 승 | 후수 승 / 선수 승 (**뒤바뀐다**). 무승부와 진행 중은 같다 |
+| `board_outcome` | `outcome` 과 같은 규칙 | 뒤바뀐다 |
 | 행동 인덱스 | `i` | `to_canonical_action_index(p, i)` |
 | 좌표·수 | `m` | 옮긴 행동 인덱스의 수. 좌표가 달라질 수 있다 |
 | `encode` | 텐서 | 같은 텐서 |
@@ -222,5 +223,22 @@ class Game(Protocol[PositionT, MoveT]):
 
         표기에 없는 것은 돌아오지 않는다. 경로를 들고 다니는 게임에서는 읽은 국면의 경로가
         비어 있어 원래 국면과 다를 수 있다. 판·차례·`ply` 는 같다.
+        """
+        ...
+
+
+class BoardOutcomeGame(Game[PositionT, MoveT], Protocol[PositionT, MoveT]):
+    """판만으로 끝났는지도 답하는 게임. **선택적** 프로토콜이라 필요한 쪽만 요구한다.
+
+    `board_key` 위에서 상태를 다루는 쪽(상태 세기·solver)은 경로와 `ply` 에 따른 종료를
+    섞어 읽으면 안 된다.
+    """
+
+    def board_outcome(self, position: PositionT) -> Outcome | None:
+        """판 + 차례만으로 정해지는 종료의 결과, 그렇게 끝나지 않았으면 `None`.
+
+        반복·수 제한처럼 경로나 `ply` 가 정하는 종료는 보지 않는다. 그래서 `board_key` 가
+        같은 국면은 같은 답을 낸다. `None` 이 아니면 `outcome` 과 같고, `None` 인데
+        `outcome` 이 있으면 그것은 무승부다.
         """
         ...

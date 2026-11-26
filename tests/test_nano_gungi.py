@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from ai.random_play import play_random_episode
+from games.base import Outcome
 from games.mini_gungi import MINI_GUNGI, Gungi
 from games.nano_gungi import NANO_GUNGI
 
@@ -30,6 +31,29 @@ def test_the_initial_position() -> None:
         " 1  ▲大     ▲帥      .\n"
         "차례: ▲   ply: 0\n"
     )
+
+
+# 두 帥 가 한 칸 나갔다가 돌아온다. 네 수마다 같은 판, 같은 차례가 된다.
+ROUND_TRIP = ("b1-b2", "b4-b3", "b2-b1", "b3-b4")
+
+
+def test_a_repetition_draw_is_not_decided_by_the_board() -> None:
+    game = Gungi(NANO_GUNGI)
+    position = game.initial_position()
+    for text in ROUND_TRIP * 2:
+        assert game.outcome(position) is None
+        position = game.apply_move(position, game.parse_move(text))
+    assert game.outcome(position) is Outcome.DRAW
+    assert game.board_outcome(position) is None
+
+
+def test_a_move_limit_draw_is_not_decided_by_the_board() -> None:
+    game = Gungi(replace(NANO_GUNGI, move_limit=len(ROUND_TRIP)))
+    position = game.initial_position()
+    for text in ROUND_TRIP:
+        position = game.apply_move(position, game.parse_move(text))
+    assert game.outcome(position) is Outcome.DRAW
+    assert game.board_outcome(position) is None
 
 
 def test_random_episodes_end_and_use_every_tower_mechanic() -> None:
