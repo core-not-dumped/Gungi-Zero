@@ -20,7 +20,7 @@
 패키지 `__init__.py` 만 두고, `tests/test_scaffolding.py` 하나가 여섯 패키지가 import 되고
 저장소 루트 바로 아래에 있는지 확인한다. `uv.lock` 에 torch·wandb·pygame 은 없다.
 
-네 게이트 전부 통과: `uv run pytest`(12 passed) · `uv run ruff check` · `uv run ruff format --check` ·
+네 게이트 전부 통과: `uv run pytest`(6 passed) · `uv run ruff check` · `uv run ruff format --check` ·
 `uv run pyright`(basic, 0 errors). 게이트가 공허하지 않은지 일부러 위반하는 모듈로 확인했다 —
 ruff 는 F401·I001 을, pyright 는 반환 타입 불일치를 잡았다.
 
