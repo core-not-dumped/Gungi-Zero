@@ -13,8 +13,8 @@ import numpy.typing as npt
 
 from engine.pieces import Piece, PieceType, Side
 from engine.position import Position, Tower
+from engine.rules import EndReason, RuleEngine
 from engine.rules import Move as GungiMove
-from engine.rules import RuleEngine
 from engine.variant import Placement, VariantConfig
 from games.base import Outcome, Player
 
@@ -22,6 +22,7 @@ __all__ = [
     "MARSHAL_ONLY",
     "MINI_GUNGI",
     "SINGLE_TIER",
+    "EndReason",
     "Gungi",
     "GungiMove",
     "GungiPosition",
@@ -40,7 +41,7 @@ MARSHAL_ONLY = VariantConfig(
     repetition_limit=3,
 )
 
-# 미니 군의의 기본 설정. 배치와 말 개수는 노브다 — 1단계 끝에 측정으로 확정한다.
+# 미니 군의의 기본 설정. 배치·말 개수·종료 규칙은 측정으로 확정했다 (docs/measurement-report.md).
 MINI_GUNGI = VariantConfig(
     width=5,
     height=5,
@@ -219,6 +220,11 @@ class Gungi:
         if result.winner is None:
             return Outcome.DRAW
         return Outcome.win_for(PLAYERS[result.winner])
+
+    def end_reason(self, position: GungiPosition) -> EndReason | None:
+        """끝난 사유. 진행 중이면 `None` 이다. 측정 보고용이며 `Game` 프로토콜에는 없다."""
+        result = self._engine.result(position.engine_position)
+        return None if result is None else result.reason
 
     @property
     def action_space_size(self) -> int:

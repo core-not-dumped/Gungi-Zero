@@ -3,7 +3,7 @@
 import pytest
 
 from games.base import Outcome
-from games.mini_gungi import MINI_GUNGI, SINGLE_TIER, Gungi, GungiPosition
+from games.mini_gungi import MINI_GUNGI, SINGLE_TIER, EndReason, Gungi, GungiPosition
 from tests.gungi_fixtures import SECTIONS, Fixture
 
 FIXTURES = [fixture for section in SECTIONS for fixture in section.fixtures]
@@ -51,3 +51,10 @@ def test_every_rule_has_a_fixture_and_the_names_are_unique() -> None:
     assert all(section.fixtures for section in SECTIONS)
     names = [fixture.name for fixture in FIXTURES]
     assert len(names) == len(set(names))
+
+
+@pytest.mark.parametrize("name", ["first-has-no-move", "no-move-at-move-limit"])
+def test_having_no_move_is_its_own_end_reason(name: str) -> None:
+    game = Gungi(MINI_GUNGI)
+    (fixture,) = (f for f in FIXTURES if f.name == name)
+    assert game.end_reason(game.parse(fixture.board)) is EndReason.NO_LEGAL_MOVES

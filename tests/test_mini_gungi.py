@@ -18,6 +18,7 @@ from games.mini_gungi import (
     MARSHAL_ONLY,
     MINI_GUNGI,
     SINGLE_TIER,
+    EndReason,
     Gungi,
     GungiMove,
     GungiPosition,
@@ -558,3 +559,22 @@ def test_the_planes_add_up_to_the_pieces_on_the_board(
 def test_a_random_episode_with_all_four_kinds_ends(config: VariantConfig, seed: int) -> None:
     episode = play_random_episode(Gungi(config), seed)
     assert len(episode.moves) <= config.move_limit
+
+
+@pytest.mark.parametrize(
+    ("config", "moves", "reason"),
+    [
+        (replace(MARSHAL_ONLY, move_limit=4), ROUND_TRIP, EndReason.MOVE_LIMIT),
+        (MARSHAL_ONLY, ROUND_TRIP * 2, EndReason.REPETITION),
+        # 둘 다 걸리면 반복으로 센다.
+        (replace(MARSHAL_ONLY, move_limit=8), ROUND_TRIP * 2, EndReason.REPETITION),
+        (MARSHAL_ONLY, ("c1-c2", "c5-c4", "c2-c3", "c4-b4", "c3-b4"), EndReason.MARSHAL_CAPTURE),
+    ],
+)
+def test_a_finished_game_says_why_it_ended(
+    config: VariantConfig, moves: tuple[str, ...], reason: EndReason
+) -> None:
+    game = Gungi(config)
+    before = play(game, game.initial_position(), *moves[:-1])
+    assert game.end_reason(before) is None
+    assert game.end_reason(play(game, before, moves[-1])) is reason

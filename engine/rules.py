@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from enum import Enum, auto
 
 from engine.movement import MOVEMENT
 from engine.pieces import Piece, PieceType, Side
@@ -23,11 +24,21 @@ class Move:
     stack: bool = False
 
 
+class EndReason(Enum):
+    """대국이 끝난 사유 (ADR-0004)."""
+
+    MARSHAL_CAPTURE = auto()  # 帥 잡기
+    NO_LEGAL_MOVES = auto()  # 합법수 없음
+    REPETITION = auto()  # 같은 판 반복
+    MOVE_LIMIT = auto()  # 수 제한
+
+
 @dataclass(frozen=True, slots=True)
 class Result:
     """끝난 대국의 결과. `winner` 가 `None` 이면 무승부다."""
 
     winner: Side | None
+    reason: EndReason
 
 
 def blocks_path(mover_tier: int, occupant: Tower) -> bool:
@@ -63,7 +74,7 @@ class RuleEngine:
         """결과와 합법수를 함께 낸다 — 합법수 없음이 종료 사유라 둘을 따로 정할 수 없다.
 
         승패를 무승부보다 먼저 본다. 마지막 수로 帥 를 잡으면 승리이고, 수 제한에 닿은
-        국면이라도 둘 수가 없으면 패배다.
+        국면이라도 둘 수가 없으면 패배다. 반복과 수 제한에 함께 닿으면 사유는 반복이다.
         """
         alive = {
             piece.owner
@@ -73,14 +84,15 @@ class RuleEngine:
         }
         for side in Side:
             if side not in alive:
-                return Result(winner=side.opponent), ()
+                return Result(side.opponent, EndReason.MARSHAL_CAPTURE), ()
         moves = self._moves(position)
         if not moves:
-            return Result(winner=position.side.opponent), ()
+            return Result(position.side.opponent, EndReason.NO_LEGAL_MOVES), ()
         # 한도는 지금 나온 것까지 센다.
-        repeated = position.earlier_occurrences + 1 >= self.config.repetition_limit
-        if repeated or position.ply >= self.config.move_limit:
-            return Result(winner=None), ()
+        if position.earlier_occurrences + 1 >= self.config.repetition_limit:
+            return Result(None, EndReason.REPETITION), ()
+        if position.ply >= self.config.move_limit:
+            return Result(None, EndReason.MOVE_LIMIT), ()
         return None, moves
 
     def _moves(self, position: Position) -> tuple[Move, ...]:

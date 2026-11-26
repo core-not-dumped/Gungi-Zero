@@ -56,7 +56,7 @@ class Section:
 INITIAL = Section(
     title="초기 배치",
     rule="5x5 판에 편마다 帥·大·槍 하나와 兵 둘. 후수의 배치는 선수 배치의 180° 회전이다.",
-    source="발명. 배치와 말 개수는 측정 뒤에 확정한다 (ADR-0003)",
+    source="발명 (ADR-0003). 배치와 말 개수는 측정으로 확정 (docs/measurement-report.md)",
     fixtures=(
         Fixture(
             name="initial-position",
