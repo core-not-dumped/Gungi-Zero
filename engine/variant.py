@@ -23,7 +23,7 @@ class VariantConfig:
     `setup` 은 선수의 배치만 적는다. 후수는 그 180° 회전이라 대칭이 아닌 배치는 적을 수조차
     없다 (ADR-0003). 말 종류와 개수도 `setup` 이 정한다 — 따로 적으면 서로 어긋날 수 있다.
 
-    `repetition_limit` 은 아직 판정에 쓰지 않는다 (04 번 티켓).
+    `repetition_limit` 은 같은 판(`board_key`)이 몇 번 나타나면 무승부인지다 (ADR-0004).
     """
 
     width: int

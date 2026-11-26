@@ -8,6 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from ai.random_play import play_random_episode
+from engine.rules import STEPS
 from games.base import Outcome
 from games.mini_gungi import (
     MARSHAL_ONLY,
@@ -276,13 +277,149 @@ def test_a_capture_on_the_last_allowed_move_still_wins() -> None:
     assert game.outcome(play(game, position, "c3-c2")) is Outcome.SECOND_WINS
 
 
+# 두 帥 가 한 칸 갔다가 돌아온다. 네 수마다 같은 판, 같은 차례가 된다.
+ROUND_TRIP = ("c1-b1", "c5-b5", "b1-c1", "b5-c5")
+
+
+def repetition_plane(game: Gungi, position: GungiPosition) -> float:
+    plane = game.encode(position)[16]
+    assert np.all(plane == plane[0, 0])
+    return float(plane[0, 0])
+
+
+def test_the_third_appearance_of_a_board_is_a_draw() -> None:
+    game = Gungi(MARSHAL_ONLY)
+    second = play(game, game.initial_position(), *ROUND_TRIP)
+    assert game.outcome(second) is None
+    almost = play(game, second, *ROUND_TRIP[:3])
+    assert game.outcome(almost) is None
+    third = play(game, almost, ROUND_TRIP[3])
+    assert game.outcome(third) is Outcome.DRAW
+    assert game.legal_moves(third) == ()
+    with pytest.raises(ValueError):
+        play(game, third, "c1-b1")
+
+
+def test_the_repetition_limit_comes_from_the_variant() -> None:
+    game = Gungi(replace(MARSHAL_ONLY, repetition_limit=2))
+    position = play(game, game.initial_position(), *ROUND_TRIP)
+    assert game.outcome(position) is Outcome.DRAW
+
+
+def test_the_same_board_with_the_other_side_to_move_is_not_a_repetition() -> None:
+    game = Gungi(replace(MARSHAL_ONLY, repetition_limit=2))
+    initial = game.initial_position()
+    # ▲ 는 세 수, ▽ 는 두 수에 제자리로 온다. 판은 처음과 같지만 차례가 ▽ 다.
+    position = play(game, initial, "c1-b1", "c5-b5", "b1-b2", "b5-c5", "b2-c1")
+    assert game.render(position).split("차례:")[0] == game.render(initial).split("차례:")[0]
+    assert game.board_key(position) != game.board_key(initial)
+    assert game.outcome(position) is None
+
+
+def test_a_parsed_position_has_no_repetitions() -> None:
+    game = Gungi(MARSHAL_ONLY)
+    played = play(game, game.initial_position(), *ROUND_TRIP, *ROUND_TRIP[:3])
+    parsed = game.parse(game.render(played))
+    assert repetition_plane(game, parsed) == 0.0
+    # 같은 수를 두어도 파싱한 쪽은 앞선 판을 모르므로 끝나지 않는다.
+    assert game.outcome(play(game, played, ROUND_TRIP[3])) is Outcome.DRAW
+    assert game.outcome(play(game, parsed, ROUND_TRIP[3])) is None
+
+
+def test_different_routes_to_the_same_board_share_the_key_but_not_the_position() -> None:
+    game = Gungi(MARSHAL_ONLY)
+    one = play(game, game.initial_position(), "c1-b1", "c5-b5", "b1-b2", "b5-b4")
+    other = play(game, game.initial_position(), "c1-c2", "c5-c4", "c2-b2", "c4-b4")
+    assert game.render(one) == game.render(other)
+    assert game.board_key(one) == game.board_key(other)
+    assert one != other
+    assert game.canonical(one) != game.canonical(other)
+
+
+def test_the_same_route_makes_equal_positions() -> None:
+    game = Gungi(MARSHAL_ONLY)
+    one = play(game, game.initial_position(), *ROUND_TRIP)
+    other = play(game, game.initial_position(), *ROUND_TRIP)
+    assert one == other
+    assert hash(one) == hash(other)
+
+
+def test_a_path_far_longer_than_a_game_can_be_compared_hashed_and_rotated() -> None:
+    game = Gungi(replace(MARSHAL_ONLY, move_limit=2000, repetition_limit=1000))
+    moves = ROUND_TRIP * 400
+    one = play(game, game.initial_position(), *moves)
+    other = play(game, game.initial_position(), *moves)
+    assert one == other
+    assert hash(one) == hash(other)
+    after = play(game, one, "c1-b1")
+    assert game.canonical(after) == game.canonical(play(game, other, "c1-b1"))
+
+
+@given(picks=st.lists(st.integers(min_value=0, max_value=2**20), max_size=40))
+def test_the_board_key_ignores_the_path_but_the_position_does_not(picks: list[int]) -> None:
+    game = Gungi(MARSHAL_ONLY)
+    position = game.initial_position()
+    for pick in picks:
+        moves = game.legal_moves(position)
+        if not moves:
+            break
+        position = game.apply_move(position, moves[pick % len(moves)])
+        # 판·차례·ply 는 같고 경로만 비어 있는 국면이다.
+        pathless = game.parse(game.render(position))
+        assert game.board_key(pathless) == game.board_key(position)
+        assert pathless != position
+
+
+def test_a_player_without_a_legal_move_loses(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 帥 만 움직일 줄 아는 지금은 둘 수 없는 판을 만들 수 없어 이동표를 비운다.
+    # 06 번 티켓이 들어오면 판 fixture 로 바꾼다.
+    monkeypatch.setitem(STEPS, PieceType.MARSHAL, ())
+    game = Gungi(MARSHAL_ONLY)
+    first = game.initial_position()
+    assert game.outcome(first) is Outcome.SECOND_WINS
+    assert game.legal_moves(first) == ()
+    second = game.parse(game.render(first).replace("차례: ▲", "차례: ▽"))
+    assert game.outcome(second) is Outcome.FIRST_WINS
+    # 수 제한에 닿은 국면이어도 둘 수가 없으면 패배다.
+    last = game.parse(game.render(first).replace("ply: 0", "ply: 200"))
+    assert game.outcome(last) is Outcome.SECOND_WINS
+
+
+def test_the_tensor_counts_earlier_appearances_of_the_board() -> None:
+    game = Gungi(MARSHAL_ONLY)
+    position = game.initial_position()
+    assert repetition_plane(game, position) == 0.0
+    once = play(game, position, "c1-b1")
+    assert repetition_plane(game, once) == 0.0
+    # ▽ 차례인 국면도 같게 센다 — 정규형으로 돌려도 경로가 따라온다.
+    again = play(game, once, "c5-b5", "b1-c1", "b5-c5", "c1-b1")
+    assert repetition_plane(game, again) == 0.5
+    assert repetition_plane(game, game.canonical(again)) == 0.5
+    third = play(game, position, *ROUND_TRIP, *ROUND_TRIP)
+    assert repetition_plane(game, third) == 1.0
+
+
+def test_the_tensor_shows_how_far_the_game_has_gone() -> None:
+    game = Gungi(MARSHAL_ONLY)
+    position = game.initial_position()
+    assert np.all(game.encode(position)[17] == 0.0)
+    assert np.all(game.encode(play(game, position, "c1-b1"))[17] == np.float32(1 / 200))
+    late = game.parse(game.render(position).replace("ply: 0", "ply: 150"))
+    assert np.all(game.encode(late)[17] == 0.75)
+
+
 @pytest.mark.parametrize("seed", range(50))
 def test_a_random_episode_ends(seed: int) -> None:
     game = Gungi(MARSHAL_ONLY)
     episode = play_random_episode(game, seed)
     assert len(episode.moves) <= MARSHAL_ONLY.move_limit
-    if episode.outcome is Outcome.DRAW:
-        assert len(episode.moves) == MARSHAL_ONLY.move_limit
+    if episode.outcome is Outcome.DRAW and len(episode.moves) < MARSHAL_ONLY.move_limit:
+        position = game.initial_position()
+        keys = [game.board_key(position)]
+        for move in episode.moves:
+            position = game.apply_move(position, move)
+            keys.append(game.board_key(position))
+        assert keys.count(keys[-1]) == MARSHAL_ONLY.repetition_limit
 
 
 def test_moves_are_written_from_square_to_square() -> None:

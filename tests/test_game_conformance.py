@@ -88,8 +88,16 @@ def test_every_legal_move_round_trips_through_its_action_index(
 @pytest.mark.parametrize("game", GAMES)
 @given(picks=PICKS)
 def test_parse_round_trips_the_render(game: Game[Any, Any], picks: list[int]) -> None:
+    """텍스트에는 경로가 없어 파싱한 국면은 원래 국면과 다를 수 있다. 보이는 것은 모두 같다."""
     for position in walk(game, picks):
-        assert game.parse(game.render(position)) == position
+        parsed = game.parse(game.render(position))
+        assert game.render(parsed) == game.render(position)
+        assert parsed.player is position.player
+        assert parsed.ply == position.ply
+        assert game.board_key(parsed) == game.board_key(position)
+        assert game.parse(game.render(parsed)) == parsed
+    initial = game.initial_position()
+    assert game.parse(game.render(initial)) == initial
 
 
 @pytest.mark.parametrize("game", GAMES)
@@ -108,15 +116,9 @@ def test_a_position_is_either_terminal_with_a_result_or_has_a_legal_move(
 
 @pytest.mark.parametrize("game", GAMES)
 @given(picks=PICKS)
-def test_the_board_key_is_hashable_and_equal_for_equal_positions(
+def test_the_board_key_is_hashable_and_survives_losing_the_path(
     game: Game[Any, Any], picks: list[int]
 ) -> None:
-    """여기서 확인할 수 있는 것은 이만큼이다.
-
-    정작 중요한 성질 — "경로가 달라도 판과 차례가 같으면 같은 키" — 는 경로를 들고 다니는
-    게임에서만 시험할 수 있다. 틱택토에는 경로가 없어 그 성질이 공짜로 참이 된다. 반복
-    규칙을 가진 게임이 붙는 티켓(04)에서 그 성질을 시험하는 것이 이 테스트의 몫이 아니다.
-    """
     for position in walk(game, picks):
         key = game.board_key(position)
         assert hash(key) == hash(game.board_key(game.parse(game.render(position))))
@@ -189,11 +191,15 @@ def test_the_tensor_is_the_movers_view_so_the_canonical_form_encodes_the_same(
 @pytest.mark.parametrize("game", GAMES)
 @given(picks=PICKS)
 def test_positions_are_immutable_and_hashable(game: Game[Any, Any], picks: list[int]) -> None:
-    for position in walk(game, picks):
-        twin = game.parse(game.render(position))
-        assert twin == position
-        assert hash(twin) == hash(position)
-        assert len({position, twin}) == 1
+    # 같은 수를 다시 두면 경로까지 같은 국면이 나온다.
+    for position, replayed in zip(walk(game, picks), walk(game, picks), strict=True):
+        assert replayed == position
+        assert hash(replayed) == hash(position)
+        text = game.render(position)
+        one, twin = game.parse(text), game.parse(text)
+        assert twin == one
+        assert hash(twin) == hash(one)
+        assert len({one, twin}) == 1
         # 속성 이름을 변수로 둔다 — 직접 대입하면 타입 검사기가 먼저 막아 테스트가 돌지 않는다.
         attribute = "player"
         with pytest.raises(AttributeError):

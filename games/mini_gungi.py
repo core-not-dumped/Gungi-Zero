@@ -28,7 +28,7 @@ __all__ = [
     "VariantConfig",
 ]
 
-# 帥 하나씩만 올린 변형. 서로 피하면 끝나지 않으므로 수 제한이 대국을 끝낸다.
+# 帥 하나씩만 올린 변형. 서로 피하면 반복 규칙이나 수 제한이 대국을 끝낸다.
 MARSHAL_ONLY = VariantConfig(
     width=5,
     height=5,
@@ -118,6 +118,7 @@ class Gungi:
         return "\n".join(lines) + "\n"
 
     def parse(self, text: str) -> GungiPosition:
+        """`render` 의 출력을 읽는다. 텍스트에는 경로가 없어 반복 횟수는 0 이다."""
         width, height = self._config.width, self._config.height
         lines = [line for line in text.splitlines() if line.strip()]
         if len(lines) != height + 2:
@@ -234,7 +235,11 @@ class Gungi:
         return (PLANE_COUNT, self._config.height, self._config.width)
 
     def encode(self, position: GungiPosition) -> npt.NDArray[np.float32]:
-        """말 평면 16장 + 반복 횟수 + 수 진행도. 뒤의 두 장은 아직 0 이다 (04 번 티켓)."""
+        """말 평면 16장 + 반복 횟수 + 수 진행도.
+
+        반복 횟수는 앞선 출현 횟수를 무승부가 되는 값(`repetition_limit - 1`)으로 나눈 것이고,
+        수 진행도는 `ply / move_limit` 이다.
+        """
         tensor = np.zeros(self.tensor_shape, dtype=np.float32)
         seen = self.canonical(position).engine_position
         for square, tower in enumerate(seen.board):
@@ -244,6 +249,9 @@ class Gungi:
                 kind = PLANE_KINDS.index(piece.kind)
                 plane = (owner * len(PLANE_KINDS) + kind) * PLANE_TIERS + tier
                 tensor[plane, row, column] = 1.0
+        earlier = position.engine_position.earlier_occurrences
+        tensor[-2] = earlier / (self._config.repetition_limit - 1)
+        tensor[-1] = position.ply / self._config.move_limit
         return tensor
 
     def board_key(self, position: GungiPosition) -> Hashable:

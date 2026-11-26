@@ -170,5 +170,9 @@ class Game(Protocol[PositionT, MoveT]):
         ...
 
     def parse(self, text: str) -> PositionT:
-        """`render` 의 출력을 다시 `Position` 으로 읽는다."""
+        """`render` 의 출력을 다시 `Position` 으로 읽는다.
+
+        표기에 없는 것은 돌아오지 않는다. 경로를 들고 다니는 게임에서는 읽은 국면의 경로가
+        비어 있어 원래 국면과 다를 수 있다. 판·차례·`ply` 는 같다.
+        """
         ...

@@ -17,3 +17,7 @@
 - [ ] fixture: 이동표 4개, 막힘 1개, `槍` 슬라이드 1개. 각각 판 그림과 기대 합법수를 명시한다
 - [ ] 속성 테스트: 말 개수가 잡힌 만큼만 줄어든다
 - [ ] 네 말·최대 단 1 설정으로 적합성 스위트가 통과하고 랜덤 대국이 끝난다
+
+## Comments
+
+- `tests/test_mini_gungi.py` 의 `test_a_player_without_a_legal_move_loses` 는 `engine.rules.STEPS` 를 monkeypatch 한다. 말 이동 규칙이 들어오면 둘 수 없는 판 fixture 로 바꾸고 `engine` import 를 없앤다 (04 번 티켓).

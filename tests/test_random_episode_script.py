@@ -29,8 +29,8 @@ def test_the_script_logs_gungi_moves_in_the_move_notation(
 def test_the_script_marks_the_capture_that_ends_a_gungi_episode(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # 시드 4 는 帥 를 잡아 끝나는 대국이다. 帥 만 있으므로 잡기는 마지막 수 하나뿐이다.
-    main(["--game", "gungi-marshal-only", "--seed", "4"])
+    # 시드 9 는 帥 를 잡아 끝나는 대국이다. 帥 만 있으므로 잡기는 마지막 수 하나뿐이다.
+    main(["--game", "gungi-marshal-only", "--seed", "9"])
     moves = re.findall(r"^ *\d+\. [▲▽] (\S+)$", capsys.readouterr().out, re.MULTILINE)
     assert moves[-1].endswith("x")
     assert not any(move.endswith("x") for move in moves[:-1])

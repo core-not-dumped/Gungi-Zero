@@ -52,7 +52,19 @@ class RuleEngine:
         return Position(board=tuple(board), side=Side.FIRST, ply=0)
 
     def result(self, position: Position) -> Result | None:
-        """끝난 국면의 결과, 진행 중이면 `None`. 반복과 합법수 없음은 04 번 티켓이다."""
+        """끝난 국면의 결과, 진행 중이면 `None`."""
+        return self._evaluate(position)[0]
+
+    def legal_moves(self, position: Position) -> tuple[Move, ...]:
+        """둘 수 있는 모든 수. 끝난 국면에서는 비어 있다."""
+        return self._evaluate(position)[1]
+
+    def _evaluate(self, position: Position) -> tuple[Result | None, tuple[Move, ...]]:
+        """결과와 합법수를 함께 낸다 — 합법수 없음이 종료 사유라 둘을 따로 정할 수 없다.
+
+        승패를 무승부보다 먼저 본다. 마지막 수로 帥 를 잡으면 승리이고, 수 제한에 닿은
+        국면이라도 둘 수가 없으면 패배다.
+        """
         alive = {
             piece.owner
             for tower in position.board
@@ -61,15 +73,18 @@ class RuleEngine:
         }
         for side in Side:
             if side not in alive:
-                return Result(winner=side.opponent)
-        # 잡기를 먼저 본다 — 마지막 수로 帥 를 잡으면 무승부가 아니라 승리다.
-        if position.ply >= self.config.move_limit:
-            return Result(winner=None)
-        return None
+                return Result(winner=side.opponent), ()
+        moves = self._moves(position)
+        if not moves:
+            return Result(winner=position.side.opponent), ()
+        # 한도는 지금 나온 것까지 센다.
+        repeated = position.earlier_occurrences + 1 >= self.config.repetition_limit
+        if repeated or position.ply >= self.config.move_limit:
+            return Result(winner=None), ()
+        return None, moves
 
-    def legal_moves(self, position: Position) -> tuple[Move, ...]:
-        if self.result(position) is not None:
-            return ()
+    def _moves(self, position: Position) -> tuple[Move, ...]:
+        """종료 규칙을 보지 않고, 말의 이동만으로 나오는 수."""
         moves: list[Move] = []
         for source, tower in enumerate(position.board):
             if not tower or tower[-1].owner is not position.side:
@@ -86,7 +101,12 @@ class RuleEngine:
         # 이동과 잡기뿐이다 — 도착 칸에 있던 적 말은 사라진다.
         board[move.target] = board[move.source]
         board[move.source] = ()
-        return Position(board=tuple(board), side=position.side.opponent, ply=position.ply + 1)
+        return Position(
+            board=tuple(board),
+            side=position.side.opponent,
+            ply=position.ply + 1,
+            previous=position,
+        )
 
     def _targets(self, position: Position, source: int) -> list[int]:
         tower = position.board[source]
