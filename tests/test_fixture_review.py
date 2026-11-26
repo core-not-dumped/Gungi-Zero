@@ -20,11 +20,13 @@ def test_every_fixture_shows_its_rule_board_and_expected_moves() -> None:
             _, _, entry = document.partition(f"`{fixture.name}`\n")
             entry = entry.partition("\n## ")[0].partition("\n### ")[0]
             assert fixture.checks in entry
+            assert fixture.note in entry
             assert f"```text\n{fixture.board}```\n" in entry
             for move in fixture.legal.split():
                 assert f"`{move}`" in entry
             for then in fixture.then:
                 assert f"```text\n{then.board}```\n" in entry
+                assert then.note in entry
 
 
 def test_the_moves_are_grouped_under_the_piece_that_makes_them() -> None:

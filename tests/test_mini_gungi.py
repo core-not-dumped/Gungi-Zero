@@ -207,6 +207,8 @@ def test_the_repetition_limit_comes_from_the_variant() -> None:
     game = Gungi(replace(MARSHAL_ONLY, repetition_limit=2))
     position = play(game, game.initial_position(), *ROUND_TRIP)
     assert game.outcome(position) is Outcome.DRAW
+    with pytest.raises(ValueError):
+        play(game, position, "c1-b1")
 
 
 def test_the_same_board_with_the_other_side_to_move_is_not_a_repetition() -> None:

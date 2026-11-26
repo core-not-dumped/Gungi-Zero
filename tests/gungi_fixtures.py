@@ -23,6 +23,7 @@ class Then:
     outcome: Outcome | None = None
     # 둔 뒤의 합법수. `None` 이면 확인하지 않는다.
     legal: str | None = None
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,8 @@ class Fixture:
     legal: str
     outcome: Outcome | None = None
     then: tuple[Then, ...] = ()
+    # 검토자가 눈여겨볼 점. 합법수 아래에 실린다.
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -209,7 +212,10 @@ BLOCKING = Section(
         "말이 있는 칸은 단수와 무관하게 길을 막는다. 그 칸까지는 갈 수 있으면 가고"
         "(잡기·쌓기), 그 너머로는 못 간다. 槍 의 전방 2칸도 뛰어넘지 않는다."
     ),
-    source="뛰어넘기는 砲·筒·弓 만 된다는 원칙은 공식 Q&A. 槍 에의 적용은 거기서 유도",
+    source=(
+        "뛰어넘기는 砲·筒·弓 만 된다는 원칙은 공식 Q&A. 槍 에의 적용은 거기서 유도. "
+        "일부 2차 자료는 '더 높은 단만 막는다' 로 요약하며 채택하지 않았다 (ADR-0002)"
+    ),
     fixtures=(
         Fixture(
             name="blocking-all-around",
@@ -223,7 +229,6 @@ BLOCKING = Section(
  1  ▲帥      .      ▲槍      .       .
 차례: ▲   ply: 0
 """,
-            # c5, e3, a3 처럼 말 너머의 칸은 없다.
             legal=(
                 "c3-c4 c3-c4^ c3-d3 c3-d3^ c3-c2 c3-c1^ c3-b3^ "
                 "c3-b4 c3-d4 c3-b2^ c3-d2 c3-d2^ "
@@ -232,6 +237,7 @@ BLOCKING = Section(
                 "b2-b3^ b2-b1 "
                 "a1-a2 a1-b1"
             ),
+            note="c5, e3, a3 처럼 말 너머의 칸은 없다.",
         ),
         Fixture(
             name="lance-blocked-by-near-friend",
@@ -249,7 +255,7 @@ BLOCKING = Section(
         ),
         Fixture(
             name="lance-blocked-by-near-enemy",
-            checks="槍 은 바로 앞의 적을 잡거나 올라타고 거기서 멈춘다.",
+            checks="槍 은 바로 앞의 적을 잡거나 그 위에 쌓고 거기서 멈춘다.",
             board="""\
      a       b       c       d       e
  5   .       .       .       .      ▽帥
@@ -297,11 +303,16 @@ BLOCKING = Section(
  5   .       .       .       .      ▽帥
  4   .       .       .       .       .
  3   .       .      ▽兵      .       .
- 2   .       .    ▲兵/▲大    .       .
+ 2   .       .    ▲大/▲兵    .       .
  1  ▲帥      .       .       .       .
 차례: ▲   ply: 4
 """,
-            legal="c2-c3 c2-c3^ c2-c1 a1-a2 a1-b1 a1-b2",
+            legal=(
+                "c2-c3 c2-c3^ c2-c1 c2-b2 c2-a2 c2-d2 c2-e2 "
+                "c2-b3 c2-a4 c2-d3 c2-e4 c2-b1 c2-d1 "
+                "a1-a2 a1-b1 a1-b2"
+            ),
+            note="大 의 전방은 무제한이지만 c4, c5 에는 못 간다.",
         ),
         Fixture(
             name="second-tier-lance-does-not-jump",
@@ -315,8 +326,8 @@ BLOCKING = Section(
  1  ▲帥      .       .       .       .
 차례: ▲   ply: 4
 """,
-            # c5 는 사거리 안이지만 c4 에 막힌다.
             legal="c2-c3 c2-c4 c2-c4^ c2-b3 c2-a4 c2-d3 c2-e4 c2-c1 a1-a2 a1-b1 a1-b2",
+            note="c5 는 사거리 안이지만 c4 에 막힌다.",
         ),
     ),
 )
@@ -410,7 +421,9 @@ TIER_LIMIT = Section(
         "자기보다 높은 단의 말은 잡을 수도 쌓을 수도 없다. 낮은 곳에는 내려가며 쌓을 수 있다. "
         "맨 위가 아군인 탑은 아래에 적이 있어도 잡을 수 없다."
     ),
-    source="잡기 제한은 발매사 특집 기사, 쌓기 제한은 2차 자료",
+    source=(
+        "잡기 제한은 발매사 특집 기사, 쌓기 제한은 2차 자료, 맨 위가 아군이면 못 잡는 것은 공식 Q&A"
+    ),
     fixtures=(
         Fixture(
             name="higher-piece-stacks-down",
@@ -424,8 +437,8 @@ TIER_LIMIT = Section(
  1  ▲帥      .       .       .       .
 차례: ▲   ply: 4
 """,
-            # c3-c2^ 가 없다.
             legal="c2-c3^ c2-c1 c3-c4 a1-a2 a1-b1 a1-b2",
+            note="c3-c2^ 가 없다.",
         ),
         Fixture(
             name="higher-enemy-tower",
@@ -481,15 +494,15 @@ TIER_LIMIT = Section(
  1  ▲帥      .       .       .       .
 차례: ▲   ply: 4
 """,
-            # 두 ▲兵 사이에는 어느 쪽으로도 수가 없다.
             legal="c3-c4 c3-c5 c2-c1 a1-a2 a1-b1 a1-b2",
+            note="두 ▲兵 사이에는 어느 쪽으로도 수가 없다.",
         ),
     ),
 )
 
 REACH = Section(
     title="2단의 사거리",
-    rule="2단의 말은 횟수가 정해진 방향이 1칸씩 늘어난다. 무제한 방향은 그대로다.",
+    rule="2단의 말은 유한 방향 사거리가 1칸씩 늘어난다. 무제한 방향은 그대로다.",
     source="2차 자료만",
     fixtures=(
         Fixture(
@@ -599,8 +612,8 @@ TOP_ONLY = Section(
             name="buried-piece-is-freed",
             checks="위의 ▽兵 이 비키면 ▲大 가 1단 말로 다시 움직인다.",
             board=FROZEN_BOARD + "차례: ▽   ply: 5\n",
-            # c3 의 ▽兵 은 2단이라 앞뒤 2칸이다.
             legal="c3-c2 c3-c1 c3-c4 c3-c5 e5-e4 e5-d5 e5-d4",
+            note="c3 의 ▽兵 은 2단이라 앞뒤 2칸이다.",
             then=(
                 Then(
                     moves="c3-c4",
@@ -705,8 +718,8 @@ NOTHING_ON_MARSHAL = Section(
  1  ▲帥      .       .       .       .
 차례: ▲   ply: 4
 """,
-            # c2-c3^ 와 a2-a1^ 가 없다.
             legal="c2-c3 c2-c1 a2-a3 a1-b1 a1-b2",
+            note="c2-c3^ 와 a2-a1^ 가 없다.",
         ),
     ),
 )
@@ -880,11 +893,14 @@ REPETITION = Section(
             board=TWO_MARSHALS + "차례: ▲   ply: 0\n",
             legal="c1-b1 c1-b2 c1-c2 c1-d2 c1-d1",
             then=(
-                # ▲ 는 세 수, ▽ 는 두 수에 제자리로 와서 같은 배치가 ▽ 차례로 나타난다.
                 Then(
                     moves=f"{ROUND_TRIP} c1-b1 c5-b5 b1-b2 b5-c5 b2-c1",
                     board=TWO_MARSHALS + "차례: ▽   ply: 9\n",
                     legal="c5-b5 c5-b4 c5-c4 c5-d4 c5-d5",
+                    note=(
+                        "▲ 는 세 수, ▽ 는 두 수에 제자리로 와서 같은 배치가 ▽ 차례로 나타난다. "
+                        "시작 배치는 0·4 수 뒤(▲ 차례)와 9 수 뒤(▽ 차례)에 나왔다."
+                    ),
                 ),
             ),
         ),

@@ -3,7 +3,7 @@
 import pytest
 
 from games.base import Outcome
-from games.mini_gungi import MINI_GUNGI, Gungi, GungiPosition
+from games.mini_gungi import MINI_GUNGI, SINGLE_TIER, Gungi, GungiPosition
 from tests.gungi_fixtures import SECTIONS, Fixture
 
 FIXTURES = [fixture for section in SECTIONS for fixture in section.fixtures]
@@ -34,6 +34,17 @@ def test_the_engine_agrees_with_the_fixture(fixture: Fixture) -> None:
             position = game.apply_move(position, game.parse_move(move))
         assert game.render(position) == then.board
         check(game, position, then.legal, then.outcome)
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [f for f in FIXTURES if "/" not in f.board and f.outcome is None],
+    ids=lambda fixture: fixture.name,
+)
+def test_the_single_tier_variant_only_drops_the_stacking_moves(fixture: Fixture) -> None:
+    game = Gungi(SINGLE_TIER)
+    moves = " ".join(move for move in fixture.legal.split() if not move.endswith("^"))
+    check(game, game.parse(fixture.board), moves, None)
 
 
 def test_every_rule_has_a_fixture_and_the_names_are_unique() -> None:

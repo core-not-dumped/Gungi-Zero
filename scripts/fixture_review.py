@@ -57,6 +57,9 @@ fixture 이름과 함께 적는다.
    (ADR-0002). 룰북이 있다면 帥·大·槍·兵 의 1단·2단 이동을 대조한다.
 3. **종료 규칙.** 200수·3회 반복·합법수 없음은 발명이다 (ADR-0004). 해석의 옳고 그름이 아니라
    이대로 학습할지를 본다. 값은 09 번 측정 뒤에 다시 정한다.
+4. **帥 의 안전.** 장군(王手) 규칙이 없다. 帥 를 적에게 잡히는 칸으로 옮기거나 잡히게 두는
+   수도 합법이다 (`first-captures-marshal` 의 `c2-b3`). 공식 Q&A 는 詰み 를 승리 조건으로
+   들지만 자기 帥 를 내주는 수를 금지하는지는 조사에서 확인하지 못했다.
 """
 
 
@@ -89,6 +92,7 @@ def _fixture(number: str, fixture: Fixture) -> str:
         f"{fixture.checks}\n",
         _board(fixture.board),
         _expectation(fixture.board, fixture.legal, fixture.outcome),
+        *_note(fixture.note),
     ]
     parts.extend(_then(then) for then in fixture.then)
     return "\n".join(parts)
@@ -101,8 +105,13 @@ def _then(then: Then) -> str:
             f"**{moves} 를 두면**\n",
             _board(then.board),
             _expectation(then.board, then.legal, then.outcome),
+            *_note(then.note),
         ]
     )
+
+
+def _note(note: str) -> list[str]:
+    return [f"참고: {note}\n"] if note else []
 
 
 def _board(board: str) -> str:
