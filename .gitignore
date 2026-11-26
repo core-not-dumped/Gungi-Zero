@@ -4,3 +4,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .hypothesis/
+# 학습이 남기는 체크포인트
+checkpoints/

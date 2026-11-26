@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Sequence
+from typing import Any, Protocol
 
 import numpy as np
 import numpy.typing as npt
@@ -25,10 +26,17 @@ class Network(Protocol):
         ...
 
 
+def to_tensor(
+    arrays: Sequence[npt.NDArray[Any] | np.generic], device: torch.device | str = "cpu"
+) -> torch.Tensor:
+    """모양이 같은 배열(또는 numpy 스칼라)들을 배치 축을 앞에 둔 텐서로. 자료형은 그대로다."""
+    return torch.from_numpy(np.stack(arrays)).to(device)
+
+
 def evaluate(
     network: Network, board: npt.NDArray[np.float32], device: torch.device | str = "cpu"
 ) -> tuple[npt.NDArray[np.float32], float]:
     """국면 하나의 `encode` 텐서를 평가해 정책 로짓 `(A,)` 와 가치를 돌려준다."""
     with torch.inference_mode():
-        logits, values = network(torch.from_numpy(board).unsqueeze(0).to(device))
+        logits, values = network(to_tensor([board], device))
     return logits[0].cpu().numpy(), float(values[0])

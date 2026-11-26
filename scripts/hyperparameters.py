@@ -5,7 +5,9 @@ Dirichlet alpha 는 10 / 평균 합법수다. 평균 합법수는 랜덤 AI 둘�
 """
 
 from ai.mcts import RootNoise
+from ai.resnet import ResNetConfig
 from ai.self_play import SelfPlayConfig
+from ai.training import TrainingConfig
 
 TICTACTOE_SELF_PLAY = SelfPlayConfig(
     simulations=50,
@@ -19,4 +21,23 @@ NANO_GUNGI_SELF_PLAY = SelfPlayConfig(
     # 평균 합법수 9.218. 측정 보고 도구(`scripts.measurement_report`)의 평균 분기 계수.
     root_noise=RootNoise(alpha=1.08, epsilon=0.25),
     exploration_moves=4,
+)
+
+# 아래 구조와 학습 양은 spec 에 없는 처음 값이다. 틱택토 검증(07)과 나노 검증(09)에서 다시 본다.
+TICTACTOE_NETWORK = ResNetConfig(blocks=2, channels=32)
+TICTACTOE_TRAINING = TrainingConfig(
+    self_play=TICTACTOE_SELF_PLAY,
+    episodes_per_generation=50,
+    buffer_generations=5,
+    steps_per_generation=100,
+    batch_size=64,
+)
+
+NANO_GUNGI_NETWORK = ResNetConfig(blocks=4, channels=64)
+NANO_GUNGI_TRAINING = TrainingConfig(
+    self_play=NANO_GUNGI_SELF_PLAY,
+    episodes_per_generation=100,
+    buffer_generations=10,
+    steps_per_generation=200,
+    batch_size=128,
 )
