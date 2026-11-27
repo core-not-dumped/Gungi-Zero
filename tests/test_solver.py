@@ -8,12 +8,14 @@ from pathlib import Path
 import pytest
 
 from eval.solver import Solution, Value, Verdict, load_solution, solve
-from games.base import Game, MoveT, Player, PositionT
+from games.base import Player
 from games.mini_gungi import Gungi, GungiPosition
 from games.tictactoe import TicTacToe
 from tests.solver_helpers import (
     FACING_MARSHALS,
     SMALL_NANO,
+    ForcedWinSearch,
+    forces_a_win,
     shortest_path_positions,
     winner_of,
     with_ply,
@@ -28,22 +30,6 @@ def small_nano() -> Gungi:
 @pytest.fixture(scope="module")
 def small_nano_solution(small_nano: Gungi) -> Solution:
     return solve(small_nano, move_limit=SMALL_NANO.move_limit)
-
-
-def forces_a_win(
-    game: Game[PositionT, MoveT], position: PositionT, winner: Player, plies: int
-) -> bool:
-    """`winner` 가 `plies` 수 안에 이기도록 강제할 수 있는지. 반복·수 제한은 게임이 판정한다."""
-    outcome = game.outcome(position)
-    if outcome is not None:
-        return outcome.winner is winner
-    if plies == 0:
-        return False
-    replies = (
-        forces_a_win(game, game.apply_move(position, move), winner, plies - 1)
-        for move in game.legal_moves(position)
-    )
-    return any(replies) if position.player is winner else all(replies)
 
 
 def test_tictactoe_is_a_draw_over_the_known_number_of_positions() -> None:
@@ -185,3 +171,16 @@ def test_a_solution_in_another_format_is_refused(small_nano: Gungi, tmp_path: Pa
     path.write_bytes(pickle.dumps({"format": 0}))
     with pytest.raises(ValueError, match="형식"):
         load_solution(path, small_nano, variant={})
+
+
+def test_the_remembering_search_agrees_with_the_search_over_the_real_rules(
+    small_nano: Gungi,
+) -> None:
+    """DTM 이 긴 판의 확인(`test_solve_nano`)이 기대는 탐색을, 가정이 없는 탐색에 댄다."""
+    search = ForcedWinSearch(small_nano)
+    # 승·무·패가 섞여 있어 두 답이 모두 나온다.
+    for position in shortest_path_positions(small_nano):
+        for winner in Player:
+            for plies in range(6):
+                expected = forces_a_win(small_nano, position, winner, plies)
+                assert search.forces(position, winner, plies) is expected
