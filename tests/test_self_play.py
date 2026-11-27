@@ -201,3 +201,33 @@ def test_the_same_seed_gives_the_same_episode_and_samples() -> None:
         np.testing.assert_array_equal(one.legal_mask, other.legal_mask)
         np.testing.assert_array_equal(one.policy, other.policy)
         assert one.value == other.value
+
+
+def test_an_episode_can_start_from_a_given_position() -> None:
+    """주어진 국면에서 두기 시작하고, temperature 1 인 수는 그 대국에서 둔 수로 센다."""
+    game = Gungi(NANO_GUNGI)
+    start = game.initial_position()
+    for text in ("a1-a2", "b4-a4"):
+        start = game.apply_move(start, game.parse_move(text))
+    network = UniformNetwork(game.tensor_shape, game.action_space_size)
+    last = NANO.exploration_moves - 1
+    off_the_top = 0
+
+    for seed in range(20):
+        result = play_self_play_episode(game, network, NANO, seed=seed, start=start)
+
+        winner = result.episode.outcome.winner
+        position = start
+        steps = zip(result.episode.moves, result.samples, strict=True)
+        for number, (move, sample) in enumerate(steps):
+            np.testing.assert_array_equal(sample.board, game.encode(position))
+            expected = 0.0 if winner is None else (1.0 if position.player is winner else -1.0)
+            assert sample.value == expected
+            if number == last:
+                chosen = sample.policy[canonical_index(game, position, move)]
+                off_the_top += bool(chosen < sample.policy.max())
+            position = game.apply_move(position, move)
+        assert position == result.episode.final_position
+
+    # `ply` 2 에서 시작해도 첫 수들은 방문 수에 비례해 고른다.
+    assert off_the_top > 0

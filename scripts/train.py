@@ -8,7 +8,6 @@ uv run python -m scripts.train --game tictactoe --generations 1
 from __future__ import annotations
 
 import argparse
-import json
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -23,11 +22,14 @@ from games.mini_gungi import Gungi, VariantConfig
 from games.nano_gungi import NANO_GUNGI
 from games.tictactoe import SIZE, TicTacToe
 from scripts.hyperparameters import (
+    NANO_GUNGI_INITIAL_START_FRACTION,
     NANO_GUNGI_NETWORK,
     NANO_GUNGI_TRAINING,
     TICTACTOE_NETWORK,
     TICTACTOE_TRAINING,
 )
+from scripts.loggers import PrintingLogger
+from scripts.self_play_starts import mixed_starts
 
 CHECKPOINT_ROOT = Path("checkpoints")
 
@@ -44,6 +46,9 @@ class GameSetup:
     end_reason: Callable[[Any], str]
     network: ResNetConfig
     training: TrainingConfig
+    # 자가 대국 가운데 초기 국면에서 시작하는 판의 비율. 1 보다 작으면 나머지는 `mixed_starts` 가
+    # 고른 국면에서 시작한다.
+    initial_start_fraction: float = 1.0
 
 
 def gungi_variant(config: VariantConfig) -> dict[str, Any]:
@@ -76,6 +81,7 @@ def _nano_gungi() -> GameSetup:
         end_reason,
         NANO_GUNGI_NETWORK,
         NANO_GUNGI_TRAINING,
+        NANO_GUNGI_INITIAL_START_FRACTION,
     )
 
 
@@ -122,10 +128,14 @@ def run(
             "variant": setup.variant,
             "network": asdict(setup.network),
             "training": asdict(setup.training),
+            # 나머지 비율은 도달 가능하고 끝나지 않은 상태에서 균등하게 뽑는다.
+            "self_play_start": {"initial_fraction": setup.initial_start_fraction},
         }
     )
     seed_everything(seed)
     network = ResNet(setup.game.tensor_shape, setup.game.action_space_size, setup.network)
+    fraction = setup.initial_start_fraction
+    start_position = None if fraction == 1 else mixed_starts(setup.game, initial_fraction=fraction)
     train(
         setup.game,
         network,
@@ -136,6 +146,7 @@ def run(
         checkpoint_dir=checkpoint_dir,
         seed=seed,
         device=device,
+        start_position=start_position,
     )
     return network
 
@@ -148,9 +159,10 @@ def new_checkpoint_dir(game: str, seed: int) -> Path:
 
 def print_records(logger: MemoryLogger) -> None:
     """설정 한 줄과 기록마다 한 줄을 JSON 으로 찍는다."""
-    print(json.dumps(logger.configuration, ensure_ascii=False))
+    printer = PrintingLogger()
+    printer.config(logger.configuration)
     for step, metrics in logger.records:
-        print(json.dumps({"step": step, **metrics}, ensure_ascii=False))
+        printer.log(metrics, step)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

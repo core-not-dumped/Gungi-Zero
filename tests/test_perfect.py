@@ -4,7 +4,7 @@ import pytest
 
 from ai.episode import play_episode
 from ai.random_play import RandomAI
-from eval.perfect import PerfectAI
+from eval.perfect import PerfectAI, best_moves
 from eval.solver import Solution, Value, Verdict, solve
 from games.base import Game, Outcome, Player
 from games.mini_gungi import Gungi
@@ -121,3 +121,21 @@ def test_perfect_play_ends_a_won_position_in_exactly_dtm_plies(small_nano: Solut
         winner = winner_of(start.player, value.verdict)
         outcome = game.outcome(position)
         assert outcome is not None and outcome.winner is winner, game.render(start)
+
+
+def test_the_best_moves_are_the_ones_that_keep_the_value_by_the_shortest_way(
+    tictactoe: Solution,
+) -> None:
+    game = tictactoe.game
+    start = game.initial_position()
+    # 틱택토의 첫 수는 모두 비긴다.
+    assert set(best_moves(tictactoe, start)) == set(game.legal_moves(start))
+    for position in shortest_path_positions(game)[:300]:
+        if game.outcome(position) is not None:
+            continue
+        expected = expected_after_a_best_move(tictactoe.value(position))
+        assert set(best_moves(tictactoe, position)) == {
+            move
+            for move in game.legal_moves(position)
+            if tictactoe.value(game.apply_move(position, move)) == expected
+        }

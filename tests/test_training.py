@@ -1,11 +1,13 @@
 """세대 루프. 주입 seam(신경망, 로거)과 체크포인트에서 보이는 것만 본다."""
 
 import math
+import random
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 import torch
 
@@ -268,3 +270,31 @@ def test_the_optimizer_defaults_follow_the_spec() -> None:
     config = small_config()
 
     assert (config.learning_rate, config.weight_decay) == (1e-3, 1e-4)
+
+
+def test_each_episode_starts_where_the_injected_rule_says(tmp_path: Path) -> None:
+    game = Gungi(NANO_GUNGI)
+    later = game.apply_move(game.initial_position(), game.parse_move("a1-a2"))
+    network = SpyNetwork(game.action_space_size)
+    asked: list[random.Random] = []
+
+    def start_position(rng: random.Random) -> Any:
+        asked.append(rng)
+        return later
+
+    train(
+        game,
+        network,
+        small_config(NANO_GUNGI_SELF_PLAY),
+        generations=2,
+        logger=MemoryLogger(),
+        end_reason=lambda position: "end",
+        checkpoint_dir=tmp_path,
+        seed=0,
+        start_position=start_position,
+    )
+
+    # 대국마다 한 번 묻는다.
+    assert len(asked) == 2 * 3
+    first_board = network.calls[0][1][0].numpy()
+    np.testing.assert_array_equal(first_board, game.encode(later))

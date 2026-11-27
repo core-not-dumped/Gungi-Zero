@@ -54,6 +54,18 @@ TICTACTOE_GENERATIONS = 50
 TICTACTOE_EVALUATION_SIMULATIONS = 50
 TICTACTOE_EVALUATION_TEMPERATURE = 0.0
 
+# 자가 대국 가운데 시작 국면에서 시작하는 판의 비율. 나머지는 도달 가능하고 끝나지 않은 상태에서
+# 균등하게 뽑는다 (ADR-0007).
+NANO_GUNGI_INITIAL_START_FRACTION = 0.25
+# 나노 검증(`scripts.verify_nano`)이 학습하는 세대 수.
+NANO_GUNGI_GENERATIONS = 100
+# 평가 대국의 탐색 횟수와 temperature (ADR-0007).
+NANO_GUNGI_EVALUATION_SIMULATIONS = 100
+NANO_GUNGI_EVALUATION_TEMPERATURE = 0.0
+# 최선수 비율 진단이 보는 국면 수와 뽑는 시드.
+NANO_GUNGI_BEST_MOVE_SAMPLE = 5000
+NANO_GUNGI_BEST_MOVE_SEED = 0
+
 NANO_GUNGI_NETWORK = ResNetConfig(blocks=4, channels=64)
 NANO_GUNGI_TRAINING = TrainingConfig(
     self_play=NANO_GUNGI_SELF_PLAY,

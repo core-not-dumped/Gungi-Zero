@@ -1,4 +1,4 @@
-"""처음부터 끝까지 진행된 한 판."""
+"""끝까지 진행된 한 판."""
 
 from __future__ import annotations
 
@@ -13,7 +13,8 @@ from games.base import Game, MoveT, Outcome, Player, PositionT
 class Episode(Generic[PositionT, MoveT]):
     """한 대국의 기록. 자가 대국이 만들어내는 학습 데이터의 단위다 (`CONTEXT.md`).
 
-    지나간 국면을 들고 있지 않다 — 초기 국면에서 `moves` 를 다시 두면 복원된다.
+    지나간 국면을 들고 있지 않다 — 시작한 국면에서 `moves` 를 다시 두면 복원된다. 시작한 국면은
+    따로 정하지 않으면 초기 국면이다.
     """
 
     moves: tuple[MoveT, ...]
@@ -32,12 +33,14 @@ def play_episode(
     game: Game[PositionT, MoveT],
     first: AI[PositionT, MoveT],
     second: AI[PositionT, MoveT],
+    *,
+    start: PositionT | None = None,
 ) -> Episode[PositionT, MoveT]:
-    """초기 국면부터 종료까지, `first` 가 선수·`second` 가 후수로 둔다.
+    """`start`(없으면 초기 국면)부터 종료까지, `first` 가 선수·`second` 가 후수로 둔다.
 
     같은 AI 를 양쪽에 넘겨도 된다. 합법수가 아닌 수를 고르면 `ValueError` 다.
     """
-    position = game.initial_position()
+    position = game.initial_position() if start is None else start
     moves: list[MoveT] = []
     while (outcome := game.outcome(position)) is None:
         ai = first if position.player is Player.FIRST else second

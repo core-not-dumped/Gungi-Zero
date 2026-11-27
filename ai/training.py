@@ -75,6 +75,7 @@ def train(
     checkpoint_dir: Path,
     seed: int,
     device: torch.device | str = "cpu",
+    start_position: Callable[[random.Random], PositionT] | None = None,
 ) -> None:
     """`network`(`Network` 프로토콜을 따르는 모듈)를 `generations` 세대 학습시킨다.
 
@@ -82,6 +83,9 @@ def train(
     `state_dict` 를 `checkpoint_dir` 에 저장하고, 그곳에 이미 체크포인트가 있으면 시작하기 전에
     `FileExistsError` 다. `end_reason` 은 끝난 국면의 종료 사유 이름이다 — `Game` 은 답하지
     않아 게임을 아는 쪽이 넘긴다.
+
+    `start_position` 은 자가 대국 한 판을 시작할 국면을 고른다. 대국마다 한 번, 학습의 난수를
+    받아 부른다. 없으면 모든 대국이 초기 국면에서 시작한다.
 
     같은 시드, 같은 처음 가중치는 CPU 에서 같은 세대 가중치를 만든다.
     """
@@ -100,12 +104,20 @@ def train(
 
     for generation in range(1, generations + 1):
         network.eval()
-        results = [
-            play_self_play_episode(
-                game, network, config.self_play, seed=rng.getrandbits(63), device=device
+        results = []
+        for _ in range(config.episodes_per_generation):
+            # 시작 국면을 고르지 않으면 난수를 쓰지 않는다. 같은 시드의 결과가 그대로다.
+            start = None if start_position is None else start_position(rng)
+            results.append(
+                play_self_play_episode(
+                    game,
+                    network,
+                    config.self_play,
+                    seed=rng.getrandbits(63),
+                    device=device,
+                    start=start,
+                )
             )
-            for _ in range(config.episodes_per_generation)
-        ]
         buffer.append([sample for result in results for sample in result.samples])
         samples = [sample for generation_samples in buffer for sample in generation_samples]
 

@@ -71,8 +71,13 @@ def play_self_play_episode(
     *,
     seed: int | None = None,
     device: torch.device | str = "cpu",
+    start: PositionT | None = None,
 ) -> SelfPlayResult[PositionT, MoveT]:
-    """초기 국면부터 종료까지 둔다. 같은 시드와 같은 신경망은 같은 결과를 낸다."""
+    """`start`(없으면 초기 국면)부터 종료까지 둔다.
+
+    같은 시드, 같은 시작 국면, 같은 신경망은 같은 결과를 낸다. `exploration_moves` 는 `ply` 가
+    아니라 이 대국에서 둔 수를 센다.
+    """
     search = MCTS(
         game,
         network,
@@ -83,7 +88,7 @@ def play_self_play_episode(
         device=device,
     )
     rng = random.Random(seed)
-    position = game.initial_position()
+    position = game.initial_position() if start is None else start
     moves: list[MoveT] = []
     turns: list[_Turn] = []
     while (outcome := game.outcome(position)) is None:

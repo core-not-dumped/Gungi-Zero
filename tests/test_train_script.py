@@ -8,7 +8,9 @@ import pytest
 
 from ai.logger import MemoryLogger
 from ai.resnet import ResNetConfig
-from scripts.train import SETUPS, GameSetup, main, run
+from games.mini_gungi import Gungi
+from scripts.train import SETUPS, GameSetup, gungi_variant, main, run
+from tests.solver_helpers import SMALL_NANO
 
 
 def small(name: str) -> GameSetup:
@@ -21,7 +23,13 @@ def small(name: str) -> GameSetup:
         steps_per_generation=2,
         batch_size=4,
     )
-    return replace(setup, network=ResNetConfig(blocks=1, channels=4), training=training)
+    # 시작 국면을 고르려면 도달 가능한 상태를 모두 돌아야 해서 여기서는 끈다.
+    return replace(
+        setup,
+        network=ResNetConfig(blocks=1, channels=4),
+        training=training,
+        initial_start_fraction=1.0,
+    )
 
 
 def train_one_generation(name: str, directory: Path) -> MemoryLogger:
@@ -116,3 +124,32 @@ def test_the_default_checkpoint_directory_is_new_for_each_run(
 
     runs = list((tmp_path / "checkpoints").iterdir())
     assert len(runs) == 2
+
+
+def test_the_nano_self_play_starts_from_a_quarter_initial_positions() -> None:
+    assert SETUPS["nano-gungi"].initial_start_fraction == 0.25
+    assert SETUPS["tictactoe"].initial_start_fraction == 1.0
+
+
+@pytest.mark.parametrize("fraction", [1.0, 0.0])
+def test_the_start_rule_is_recorded_and_injected(fraction: float, tmp_path: Path) -> None:
+    """초기 국면에서 두 수 만에 지는 일이 없는 변형이라, 다른 국면에서 시작하면 길이가 달라진다."""
+    setup = replace(
+        small("nano-gungi"),
+        game=Gungi(replace(SMALL_NANO, move_limit=2)),
+        variant=gungi_variant(SMALL_NANO),
+        # 설정의 `end_reason` 은 원래 게임의 것이다.
+        end_reason=lambda position: "end",
+        initial_start_fraction=fraction,
+    )
+    logger = MemoryLogger()
+
+    run(setup, logger=logger, generations=1, checkpoint_dir=tmp_path, seed=3)
+
+    assert logger.configuration["self_play_start"] == {"initial_fraction": fraction}
+    [(_, metrics)] = logger.records
+    # 수 제한이 2 라 초기 국면의 대국은 1~2 수이고, `ply` 1 에서 시작한 대국은 1 수다.
+    if fraction == 1.0:
+        assert metrics["self_play/length_max"] == 2
+    else:
+        assert metrics["self_play/length_max"] == 1

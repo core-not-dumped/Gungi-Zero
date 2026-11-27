@@ -50,3 +50,16 @@ def test_swapping_the_ais_records_the_result_by_seat() -> None:
     episode = play_episode(game, PreferringAI(game, LOSER), PreferringAI(game, WINNER))
     assert rendered(game, episode.moves) == "a2 a1 b2 b1 a3 c1"
     assert episode.outcome is Outcome.SECOND_WINS
+
+
+def test_an_episode_can_start_from_a_given_position() -> None:
+    game = TicTacToe()
+    start = game.apply_move(game.initial_position(), game.parse_move("a1"))
+    first, second = PreferringAI(game, WINNER), PreferringAI(game, LOSER)
+
+    episode = play_episode(game, first, second, start=start)
+
+    # 시작 국면의 차례인 후수가 먼저 둔다.
+    assert second.asked[0] is Player.SECOND
+    assert rendered(game, episode.moves).split()[0] == "a2"
+    assert episode.final_position.ply == 1 + len(episode.moves)
