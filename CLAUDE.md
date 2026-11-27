@@ -17,10 +17,16 @@ MCTS·자가 대국·학습 루프는 프레임워크 없이 직접 구현한다
 
 틱택토에는 경로·탑·쌓기가 없다. 반복, 수 진행도, 군의 메커니즘은 2단계 검증을 통과했어도 확인되지 않았다.
 
+### 나노 군의 풀이
+
+- `uv run python -m scripts.solve_nano` — 나노 군의를 풀어 `solutions/` 에 저장한다(git 제외). 룰 엔진이나 solver 를 바꾸면 다시 만든다.
+- 시작 국면의 이론값은 **선수 승(DTM 3)** 이라 완료 기준에서 후수 100판은 기록만 남는다. 09 전에 `docs/nano-solution.md` 의 "2.5단계 검증에 주는 뜻" 을 읽는다.
+- `engine/`, `games/mini_gungi.py`·`nano_gungi.py`, `eval/`(solver·완벽한 상대), `scripts/solve_nano.py` 를 바꾸면 `-m slow` 를 다시 돌린다. CI 는 나노 군의를 풀지 않는다.
+
 ### 틱택토 검증 (2단계, 2026-11-27 통과)
 
 - `uv run python -m scripts.verify_tictactoe` — 처음부터 학습해 완벽한 상대와 둔다. 학습 시드 0 은 선수·후수 각 100판 무패, 가치 일치율 0.79 였다. 100판 중 서로 다른 대국은 선수 5가지, 후수 60가지라 "100판 무패" 가 시험하는 국면은 판 수보다 훨씬 좁다.
-- 로컬 CPU(Windows, torch 스레드 1)에서 420초가 걸려 CI 의 5분 기준을 넘는다. CI 는 1세대 스모크 테스트만 돌고, 완료 기준은 `uv run pytest -m slow` 로 로컬에서 확인한다. CI 환경(리눅스)에서는 학습 전체를 재지도 통과시키지도 않았다.
+- 로컬 CPU(Windows, torch 스레드 1)에서 420초가 걸려 CI 의 5분 기준을 넘는다. CI 는 1세대 스모크 테스트만 돌고, 완료 기준은 `uv run pytest -m slow` 로 로컬에서 확인한다. `-m slow` 는 나노 군의 풀이(약 4분)도 함께 돌린다. CI 환경(리눅스)에서는 학습 전체를 재지도 통과시키지도 않았다.
 - `ai/`, `games/base.py`, `games/tictactoe.py`, `eval/`(solver·완벽한 상대·harness), `scripts/train.py`·`verify_tictactoe.py`, 틱택토 하이퍼파라미터를 바꾸면 `-m slow` 를 다시 돌린다. CI 는 학습이 약해지는 변경을 잡지 못한다.
 
 ## 원칙

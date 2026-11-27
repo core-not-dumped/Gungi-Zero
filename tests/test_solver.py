@@ -1,11 +1,13 @@
 """solver. 남이 아는 값(틱택토), 손으로 풀리는 작은 변형, 실제 규칙 위의 깊이 탐색에 댄다."""
 
+import pickle
 import random
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
-from eval.solver import Solution, Value, Verdict, solve
+from eval.solver import Solution, Value, Verdict, load_solution, solve
 from games.base import Game, MoveT, Player, PositionT
 from games.mini_gungi import Gungi, GungiPosition
 from games.tictactoe import TicTacToe
@@ -135,3 +137,51 @@ def test_a_position_outside_the_solved_graph_is_refused() -> None:
     unreachable = game.parse("     a       b       c\n 1  ▲帥      .      ▽帥\n차례: ▽   ply: 0\n")
     with pytest.raises(ValueError):
         solution.value(unreachable)
+
+
+def test_it_counts_the_states_by_value_and_finds_the_longest_dtm() -> None:
+    solution = solve(Gungi(FACING_MARSHALS), move_limit=FACING_MARSHALS.move_limit)
+    assert solution.verdict_counts() == {Verdict.WIN: 1, Verdict.DRAW: 0, Verdict.LOSS: 2}
+    assert solution.max_dtm() == 2
+
+
+def test_the_counts_do_not_depend_on_the_move_limit(
+    small_nano: Gungi, small_nano_solution: Solution
+) -> None:
+    unlimited = solve(small_nano, move_limit=None)
+    assert small_nano_solution.verdict_counts() == unlimited.verdict_counts()
+    assert sum(unlimited.verdict_counts().values()) == len(unlimited)
+    assert small_nano_solution.max_dtm() == 5
+
+
+def test_a_saved_solution_answers_the_same_with_its_own_move_limit(
+    small_nano: Gungi, small_nano_solution: Solution, tmp_path: Path
+) -> None:
+    path = tmp_path / "made" / "small.pickle"
+    small_nano_solution.save(path, variant={"name": "small"})
+
+    loaded = load_solution(path, small_nano, variant={"name": "small"})
+
+    assert loaded.move_limit == SMALL_NANO.move_limit
+    assert len(loaded) == len(small_nano_solution)
+    # 수 제한에 걸리는 `ply` 까지 같아야 한다.
+    for position in shortest_path_positions(small_nano):
+        for ply in (position.ply, SMALL_NANO.move_limit - 3):
+            late = with_ply(small_nano, position, ply)
+            assert loaded.value(late) == small_nano_solution.value(late)
+
+
+def test_a_solution_of_another_variant_is_refused(
+    small_nano: Gungi, small_nano_solution: Solution, tmp_path: Path
+) -> None:
+    path = tmp_path / "small.pickle"
+    small_nano_solution.save(path, variant={"move_limit": 200})
+    with pytest.raises(ValueError, match="변형"):
+        load_solution(path, small_nano, variant={"move_limit": 100})
+
+
+def test_a_solution_in_another_format_is_refused(small_nano: Gungi, tmp_path: Path) -> None:
+    path = tmp_path / "other.pickle"
+    path.write_bytes(pickle.dumps({"format": 0}))
+    with pytest.raises(ValueError, match="형식"):
+        load_solution(path, small_nano, variant={})

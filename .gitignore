@@ -6,3 +6,5 @@ __pycache__/
 .hypothesis/
 # 학습이 남기는 체크포인트
 checkpoints/
+# solve_nano 가 만드는 풀이 파일
+solutions/

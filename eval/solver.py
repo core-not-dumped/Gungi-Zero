@@ -23,14 +23,24 @@
 
 그래프의 값은 수 제한이 없을 때의 값이다. 승패는 `DTM ≤ 수 제한 - ply` 일 때만 이루어지고,
 아니면 지는 쪽이 한도까지 버티므로 무승부다.
+
+## 풀이 파일
+
+`Solution.save` 는 상태마다의 값, 수 제한, 부르는 쪽이 넘긴 변형 설정을 pickle 로 쓴다.
+`eval` 은 게임을 모르므로 변형 설정은 그대로 적어 두고 읽을 때 같은지만 본다. 룰 엔진이나
+solver 가 바뀐 것은 알아채지 못하므로 그때는 다시 만든다. pickle 은 읽으면서 코드를 실행할 수
+있으므로 직접 만든 파일만 읽는다.
 """
 
 from __future__ import annotations
 
-from collections.abc import Hashable
+import pickle
+from collections import Counter
+from collections.abc import Hashable, Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Generic
+from pathlib import Path
+from typing import Any, Generic
 
 from games.base import BoardOutcomeGame, MoveT, Outcome, Player, PositionT
 
@@ -52,6 +62,9 @@ class Value:
 
 
 _DRAW = Value(Verdict.DRAW, None)
+
+# 풀이 파일의 형식. 담는 것이 달라지면 올린다.
+_FILE_FORMAT = 1
 
 
 @dataclass(frozen=True)
@@ -83,11 +96,38 @@ class Solution(Generic[PositionT, MoveT]):
     ) -> None:
         self.game = game
         self._values = values
-        self._move_limit = move_limit
+        # 풀 때의 수 제한. 없으면 `None` 이다.
+        self.move_limit = move_limit
 
     def __len__(self) -> int:
         """도달 가능한 상태의 수."""
         return len(self._values)
+
+    def verdict_counts(self) -> dict[Verdict, int]:
+        """상태를 둘 차례인 쪽 시점의 승·무·패로 센다. 수 제한은 보지 않는다."""
+        counts = Counter(value.verdict for value in self._values.values())
+        return {verdict: counts[verdict] for verdict in Verdict}
+
+    def max_dtm(self) -> int | None:
+        """승패가 나는 상태 중 가장 긴 DTM. 수 제한은 보지 않는다. 모두 비기면 `None` 이다."""
+        return max(
+            (value.dtm for value in self._values.values() if value.dtm is not None), default=None
+        )
+
+    def save(self, path: Path, *, variant: Mapping[str, Any]) -> None:
+        """`load_solution` 이 읽을 파일을 쓴다. `variant` 는 푼 게임의 변형 설정이다."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("wb") as file:
+            pickle.dump(
+                {
+                    "format": _FILE_FORMAT,
+                    "variant": dict(variant),
+                    "move_limit": self.move_limit,
+                    "values": self._values,
+                },
+                file,
+                protocol=pickle.HIGHEST_PROTOCOL,
+            )
 
     def value(self, position: PositionT) -> Value:
         """`position` 의 이론값. 그 `ply` 에서의 수 제한을 반영한다.
@@ -102,8 +142,8 @@ class Solution(Generic[PositionT, MoveT]):
             raise ValueError("초기 국면에서 도달할 수 없는 상태다")
         if (
             value.dtm is not None
-            and self._move_limit is not None
-            and value.dtm > self._move_limit - position.ply
+            and self.move_limit is not None
+            and value.dtm > self.move_limit - position.ply
         ):
             return _DRAW
         return value
@@ -147,6 +187,26 @@ def solve(
 
     solved = {key: value or _DRAW for key, value in zip(graph.keys, values, strict=True)}
     return Solution(game, solved, move_limit)
+
+
+def load_solution(
+    path: Path,
+    game: BoardOutcomeGame[PositionT, MoveT],
+    *,
+    variant: Mapping[str, Any],
+) -> Solution[PositionT, MoveT]:
+    """`Solution.save` 가 쓴 파일을 읽는다. 수 제한은 파일에 적힌 것이다.
+
+    `game` 은 푼 게임이다. 형식이 다르거나 적힌 변형 설정이 `variant` 와 다르면 `ValueError` 다.
+    직접 만든 파일만 읽는다 (모듈 docstring 의 "풀이 파일").
+    """
+    with path.open("rb") as file:
+        saved = pickle.load(file)
+    if not isinstance(saved, dict) or saved.get("format") != _FILE_FORMAT:
+        raise ValueError(f"풀이 파일의 형식이 다르다. 다시 만든다: {path}")
+    if saved["variant"] != dict(variant):
+        raise ValueError(f"다른 변형의 풀이다: {path} 는 {saved['variant']} 를 푼 것이다")
+    return Solution(game, saved["values"], saved["move_limit"])
 
 
 def _explore(game: BoardOutcomeGame[PositionT, MoveT]) -> _Graph:
