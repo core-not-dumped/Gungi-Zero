@@ -33,10 +33,20 @@ def to_tensor(
     return torch.from_numpy(np.stack(arrays)).to(device)
 
 
+def evaluate_batch(
+    network: Network,
+    boards: Sequence[npt.NDArray[np.float32]],
+    device: torch.device | str = "cpu",
+) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
+    """국면들의 `encode` 텐서를 한 번에 평가해 정책 로짓 `(B, A)` 와 가치 `(B,)` 를 돌려준다."""
+    with torch.inference_mode():
+        logits, values = network(to_tensor(boards, device))
+    return logits.cpu().numpy(), values.cpu().numpy()
+
+
 def evaluate(
     network: Network, board: npt.NDArray[np.float32], device: torch.device | str = "cpu"
 ) -> tuple[npt.NDArray[np.float32], float]:
     """국면 하나의 `encode` 텐서를 평가해 정책 로짓 `(A,)` 와 가치를 돌려준다."""
-    with torch.inference_mode():
-        logits, values = network(to_tensor([board], device))
-    return logits[0].cpu().numpy(), float(values[0])
+    logits, values = evaluate_batch(network, [board], device)
+    return logits[0], float(values[0])

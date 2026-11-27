@@ -43,7 +43,9 @@ explicit = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-q"
+# 몇 분이 걸리는 검증은 `slow` 로 표시하고 기본 실행에서 뺀다. `uv run pytest -m slow` 로 돌린다.
+addopts = "-q -m 'not slow'"
+markers = ["slow: 몇 분이 걸리는 검증. 로컬에서만 돌린다"]
 
 [tool.ruff]
 target-version = "py311"

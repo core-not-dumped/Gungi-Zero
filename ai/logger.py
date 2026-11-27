@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 class Logger(Protocol):
     def config(self, values: Mapping[str, Any]) -> None:
-        """한 학습의 설정. 바뀌지 않는 값이다."""
+        """한 학습의 설정. 바뀌지 않는 값이다. 여러 번 부르면 키를 합친다."""
         ...
 
     def log(self, metrics: Mapping[str, float], step: int) -> None:

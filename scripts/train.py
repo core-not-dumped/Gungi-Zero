@@ -111,8 +111,8 @@ def run(
     checkpoint_dir: Path,
     seed: int,
     device: str = "cpu",
-) -> None:
-    """설정을 로거에 남기고 처음 가중치부터 학습한다."""
+) -> ResNet:
+    """설정을 로거에 남기고 처음 가중치부터 학습한다. 마지막 세대의 신경망을 돌려준다."""
     logger.config(
         {
             "game": setup.name,
@@ -137,6 +137,20 @@ def run(
         seed=seed,
         device=device,
     )
+    return network
+
+
+def new_checkpoint_dir(game: str, seed: int) -> Path:
+    """학습마다 새로 만드는 기본 체크포인트 폴더."""
+    started = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    return CHECKPOINT_ROOT / f"{game}-seed{seed}-{started}"
+
+
+def print_records(logger: MemoryLogger) -> None:
+    """설정 한 줄과 기록마다 한 줄을 JSON 으로 찍는다."""
+    print(json.dumps(logger.configuration, ensure_ascii=False))
+    for step, metrics in logger.records:
+        print(json.dumps({"step": step, **metrics}, ensure_ascii=False))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -155,10 +169,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.generations < 1:
         parser.error("--generations 는 1 이상이다")
 
-    directory = args.checkpoint_dir
-    if directory is None:
-        started = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        directory = CHECKPOINT_ROOT / f"{args.game}-seed{args.seed}-{started}"
+    directory = args.checkpoint_dir or new_checkpoint_dir(args.game, args.seed)
 
     logger = MemoryLogger()
     run(
@@ -169,9 +180,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         seed=args.seed,
         device=args.device,
     )
-    print(json.dumps(logger.configuration, ensure_ascii=False))
-    for step, metrics in logger.records:
-        print(json.dumps({"step": step, **metrics}, ensure_ascii=False))
+    print_records(logger)
     return 0
 
 

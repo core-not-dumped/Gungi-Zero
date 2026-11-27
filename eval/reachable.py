@@ -1,10 +1,33 @@
-"""초기 국면에서 도달 가능한 상태 세기."""
+"""초기 국면에서 도달 가능한 상태 돌기와 세기."""
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 
-from games.base import BoardOutcomeGame, MoveT, PositionT
+from games.base import BoardOutcomeGame, Game, MoveT, PositionT
+
+
+def reachable_positions(game: Game[PositionT, MoveT]) -> Iterator[PositionT]:
+    """도달 가능한 `board_key` 마다 가장 짧은 경로로 처음 닿은 국면 하나를 너비 우선으로 낸다.
+
+    끝난 국면도 낸다. 뻗어 나가는 것은 `legal_moves` 라 수 제한에 닿은 국면에서는 더 나아가지
+    않는다. 본 상태의 키와 다음 깊이의 국면들을 메모리에 둔다.
+    """
+    start = game.initial_position()
+    seen = {game.board_key(start)}
+    frontier = [start]
+    while frontier:
+        following: list[PositionT] = []
+        for position in frontier:
+            yield position
+            for move in game.legal_moves(position):
+                child = game.apply_move(position, move)
+                key = game.board_key(child)
+                if key not in seen:
+                    seen.add(key)
+                    following.append(child)
+        frontier = following
 
 
 @dataclass(frozen=True)
