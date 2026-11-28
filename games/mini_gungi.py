@@ -139,6 +139,18 @@ class Gungi:
         self._config = config
         self._engine = RuleEngine(config)
         self._geometry = config.geometry
+        # 탐색이 수마다 여러 번 묻는 값은 한 번만 계산한다.
+        self._squares = config.square_count
+        # 쌓기 여부 하나에 해당하는 행동 인덱스의 개수. 출발 칸 * 도착 칸이다.
+        self._square_pairs = self._squares**2
+        # 행동 인덱스 → 출발·도착 칸을 180° 돌린 행동 인덱스. 쌓기 여부는 그대로다.
+        rotate = self._geometry.rotate
+        rotated = [
+            rotate(source) * self._squares + rotate(target)
+            for source in range(self._squares)
+            for target in range(self._squares)
+        ]
+        self._rotated_actions = (*rotated, *(self._square_pairs + index for index in rotated))
 
     @property
     def geometry(self) -> BoardGeometry:
@@ -264,24 +276,19 @@ class Gungi:
     @property
     def action_space_size(self) -> int:
         """출발 칸 * 도착 칸 * 쌓기 여부 (ADR-0006)."""
-        return 2 * self._square_pair_count
-
-    @property
-    def _square_pair_count(self) -> int:
-        """쌓기 여부 하나에 해당하는 행동 인덱스의 개수. 출발 칸 * 도착 칸이다."""
-        return self._config.square_count**2
+        return 2 * self._square_pairs
 
     def action_index(self, move: GungiMove) -> int:
-        for square in (move.source, move.target):
-            if not self._geometry.on_board(square):
-                raise ValueError(f"판 밖의 칸을 가리키는 수다: {move}")
-        squares = move.source * self._config.square_count + move.target
-        return move.stack * self._square_pair_count + squares
+        count = self._squares
+        source, target = move.source, move.target
+        if not (0 <= source < count and 0 <= target < count):
+            raise ValueError(f"판 밖의 칸을 가리키는 수다: {move}")
+        return move.stack * self._square_pairs + source * count + target
 
     def move_from_action_index(self, index: int) -> GungiMove:
         self._check_action_index(index)
-        stack, squares = divmod(index, self._square_pair_count)
-        source, target = divmod(squares, self._config.square_count)
+        stack, squares = divmod(index, self._square_pairs)
+        source, target = divmod(squares, self._squares)
         return GungiMove(source, target, stack=bool(stack))
 
     def _check_action_index(self, index: int) -> None:
@@ -308,12 +315,7 @@ class Gungi:
         self._check_action_index(index)
         if position.player is Player.FIRST:
             return index
-        # 출발·도착 칸을 돌린다. 쌓기 여부는 그대로다.
-        stack, squares = divmod(index, self._square_pair_count)
-        source, target = divmod(squares, self._config.square_count)
-        rotate = self._geometry.rotate
-        rotated = rotate(source) * self._config.square_count + rotate(target)
-        return stack * self._square_pair_count + rotated
+        return self._rotated_actions[index]
 
     def from_canonical_action_index(self, position: GungiPosition, index: int) -> int:
         # 180° 회전은 두 번 하면 제자리라 역변환이 같다.

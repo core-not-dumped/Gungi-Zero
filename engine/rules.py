@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 
 from engine.geometry import forward
 from engine.movement import MOVEMENT
 from engine.pieces import Piece, PieceType, Side
-from engine.position import Position, Tower
+from engine.position import Board, Position, Tower
 from engine.variant import VariantConfig
+
+# 엔진 하나가 판만 보는 답을 기억하는 판 + 차례의 상한. 넘으면 모두 잊고 다시 모은다.
+REMEMBERED_BOARDS = 100_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,9 +53,21 @@ def blocks_path(mover_tier: int, occupant: Tower) -> bool:
     return bool(occupant)
 
 
+# 한 방향의 길: 가까운 칸부터 (도착 칸, 이동·잡기의 수, 쌓기의 수).
+Path = tuple[tuple[int, Move, Move], ...]
+
+
 @dataclass(frozen=True, slots=True)
 class RuleEngine:
     config: VariantConfig
+    # 판 + 차례 → 판만 보는 답. 같은 판을 되풀이해 묻는 일이 많다.
+    _boards: dict[tuple[Board, Side], tuple[Result | None, tuple[Move, ...]]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    # (말, 단, 칸) → 그 말이 빈 판에서 뻗는 길들. 처음 쓸 때 만든다.
+    _paths: dict[tuple[Piece, int, int], tuple[Path, ...]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
 
     def initial_position(self) -> Position:
         geometry = self.config.geometry
@@ -96,7 +110,19 @@ class RuleEngine:
         return None, moves
 
     def _evaluate_board(self, position: Position) -> tuple[Result | None, tuple[Move, ...]]:
-        """`_evaluate` 에서 판 + 차례만 보는 부분. 끝나지 않았으면 말의 이동도 함께 낸다."""
+        """`_evaluate` 에서 판 + 차례만 보는 부분. 끝나지 않았으면 말의 이동도 함께 낸다.
+
+        답은 판과 차례만으로 정해져 기억해 둔다. 경로에 달린 반복과 수 제한은 기억하지 않는다.
+        """
+        key = (position.board, position.side)
+        answer = self._boards.get(key)
+        if answer is None:
+            if len(self._boards) >= REMEMBERED_BOARDS:
+                self._boards.clear()
+            answer = self._boards[key] = self._judge_board(position)
+        return answer
+
+    def _judge_board(self, position: Position) -> tuple[Result | None, tuple[Move, ...]]:
         alive = {
             piece.owner
             for tower in position.board
@@ -141,9 +167,35 @@ class RuleEngine:
 
     def _piece_moves(self, position: Position, source: int) -> list[Move]:
         """`source` 의 맨 위 말이 두는 수. 아래에 깔린 말은 움직이지 않는다."""
-        tower = position.board[source]
+        board = position.board
+        tower = board[source]
         mover = tower[-1]
         tier = len(tower)
+        key = (mover, tier, source)
+        paths = self._paths.get(key)
+        if paths is None:
+            paths = self._paths[key] = self._paths_of(mover, tier, source)
+
+        moves: list[Move] = []
+        for path in paths:
+            for target, plain, stacked in path:
+                occupant = board[target]
+                if not occupant:
+                    moves.append(plain)
+                    continue
+                takes, stacks = self._choices(mover, tier, occupant)
+                if takes:
+                    moves.append(plain)
+                if stacks:
+                    moves.append(stacked)
+                if blocks_path(tier, occupant):
+                    break
+        return moves
+
+    def _paths_of(self, mover: Piece, tier: int, source: int) -> tuple[Path, ...]:
+        """`source` 의 `tier` 단에 있는 `mover` 가 빈 판에서 뻗는 길들. 사거리 표의 방향마다
+        하나이고 가까운 칸부터다. 판에 놓인 말과 상관없어 한 번만 계산한다.
+        """
         # 표의 앞은 선수의 앞이다.
         facing = forward(mover.owner)
         geometry = self.config.geometry
@@ -151,39 +203,35 @@ class RuleEngine:
         board_span = max(geometry.width, geometry.height)
 
         column, row = geometry.column_and_row(source)
-        moves: list[Move] = []
+        paths: list[Path] = []
         for ray in MOVEMENT[mover.kind]:
             reach = ray.reach_at(tier)
+            path: list[tuple[int, Move, Move]] = []
             for distance in range(1, (board_span if reach is None else reach) + 1):
                 to_column = column + facing * ray.column_step * distance
                 to_row = row + facing * ray.row_step * distance
                 if not geometry.contains(to_column, to_row):
                     break
                 target = geometry.square(to_column, to_row)
-                occupant = position.board[target]
-                moves.extend(
-                    Move(source, target, stack)
-                    for stack in self._stack_flags(mover, tier, occupant)
-                )
-                if blocks_path(tier, occupant):
-                    break
-        return moves
+                path.append((target, Move(source, target), Move(source, target, stack=True)))
+            if path:
+                paths.append(tuple(path))
+        return tuple(paths)
 
-    def _stack_flags(self, mover: Piece, tier: int, occupant: Tower) -> Iterator[bool]:
-        """`tier` 단의 `mover` 가 `occupant` 칸에서 고를 수 있는 수의 쌓기 여부 (ADR-0006).
+    def _choices(self, mover: Piece, tier: int, occupant: Tower) -> tuple[bool, bool]:
+        """`tier` 단의 `mover` 가 말이 있는 `occupant` 칸에서 고를 수 있는 수 (ADR-0006):
+        `(잡기, 쌓기)`.
 
-        빈칸은 이동, 아군은 쌓기뿐이고, 적은 잡기와 쌓기 둘 다다.
+        아군은 쌓기뿐이고, 적은 잡기와 쌓기 둘 다다.
         """
-        if not occupant:
-            yield False
-            return
         # 단수 제약: 자기보다 높은 단의 말은 잡을 수도 쌓을 수도 없다.
         if len(occupant) > tier:
-            return
+            return False, False
         top = occupant[-1]
-        if top.owner is not mover.owner:
-            yield False
         # 帥 위에는 누구도 못 올라가고, 帥 자신도 어디에도 못 올라간다 (帥ツケ 금지).
-        marshal_involved = PieceType.MARSHAL in (top.kind, mover.kind)
-        if len(occupant) < self.config.max_tier and not marshal_involved:
-            yield True
+        stacks = (
+            len(occupant) < self.config.max_tier
+            and top.kind is not PieceType.MARSHAL
+            and mover.kind is not PieceType.MARSHAL
+        )
+        return top.owner is not mover.owner, stacks
