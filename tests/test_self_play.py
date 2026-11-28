@@ -19,7 +19,7 @@ from games.base import Game, Outcome, Player
 from games.mini_gungi import EndReason, Gungi
 from games.nano_gungi import NANO_GUNGI
 from games.tictactoe import TicTacToe
-from scripts.hyperparameters import NANO_GUNGI_SELF_PLAY, TICTACTOE_SELF_PLAY
+from scripts.shared.hyperparameters import NANO_GUNGI_SELF_PLAY, TICTACTOE_SELF_PLAY
 from tests.stub_networks import UniformNetwork
 
 # 탐색 횟수만 줄여 빠르게 돈다.

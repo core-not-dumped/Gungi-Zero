@@ -15,16 +15,15 @@ import time
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from ai.episode import play_episode
 from eval.perfect import PerfectAI
-from eval.solver import Solution, Value, Verdict, load_solution, solve
-from games.base import BoardOutcomeGame, Outcome, Player
-from scripts.train import SETUPS, GameSetup
+from eval.solver import Value, Verdict, solve
+from games.base import Outcome, Player
+from scripts.shared.setups import SETUPS, GameSetup
+from scripts.shared.solution import SOLUTION_PATH, _board_outcome_game, load_solution_of
 
-# git 에 넣지 않는다.
-SOLUTION_PATH = Path("solutions/nano-gungi.pickle")
 SEEDS = range(10)
 
 
@@ -61,16 +60,6 @@ class Report:
             Verdict.LOSS: Outcome.win_for(Player.SECOND),
         }[self.start.verdict]
         return all(episode.outcome is expected for episode in self.episodes)
-
-
-def _board_outcome_game(setup: GameSetup) -> BoardOutcomeGame[Any, Any]:
-    # 군의는 `board_outcome` 을 답한다. `GameSetup` 은 공통 인터페이스로만 들고 있다.
-    return cast(BoardOutcomeGame[Any, Any], setup.game)
-
-
-def load_solution_of(setup: GameSetup, path: Path) -> Solution[Any, Any]:
-    """`path` 의 풀이를 읽는다. `setup` 의 변형을 푼 것이 아니면 `ValueError` 다."""
-    return load_solution(path, _board_outcome_game(setup), variant=setup.variant)
 
 
 def solve_to_file(setup: GameSetup, path: Path, *, seeds: Sequence[int]) -> Report:

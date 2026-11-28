@@ -17,6 +17,7 @@ import numpy as np
 import torch
 
 from ai.batched import EvaluationCache
+from ai.checkpoint import has_checkpoints, save_network
 from ai.graphed import GraphedNetwork
 from ai.logger import Logger
 from ai.network import Network, to_tensor
@@ -71,13 +72,6 @@ def seed_everything(seed: int) -> None:
     torch.manual_seed(seed)
 
 
-CHECKPOINT_PATTERN = "generation-{}.pt"
-
-
-def checkpoint_path(directory: Path, generation: int) -> Path:
-    return directory / CHECKPOINT_PATTERN.format(f"{generation:04d}")
-
-
 def train(
     game: Game[PositionT, MoveT],
     network: torch.nn.Module,
@@ -105,7 +99,7 @@ def train(
     바꾸면 평가를 묶는 크기가 달라져 부동소수점 끝자리부터 갈릴 수 있다.
     """
     # 다른 학습의 세대가 섞이면 세대 사이의 비교가 조용히 틀린다.
-    if any(checkpoint_dir.glob(CHECKPOINT_PATTERN.format("*"))):
+    if has_checkpoints(checkpoint_dir):
         raise FileExistsError(f"이미 체크포인트가 있는 곳이다: {checkpoint_dir}")
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -159,7 +153,7 @@ def train(
         metrics["replay_buffer/samples"] = len(samples)
         # 저장하는 세대는 기록보다 체크포인트가 먼저 있도록 한다.
         if generation % config.checkpoint_every == 0 or generation == generations:
-            torch.save(network.state_dict(), checkpoint_path(checkpoint_dir, generation))
+            save_network(network, checkpoint_dir, generation)
         logger.log(metrics, step=generation)
 
 

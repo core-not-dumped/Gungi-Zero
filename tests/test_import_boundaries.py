@@ -329,3 +329,47 @@ def test_ui_does_not_import_the_engine_or_the_ai_directly(forbidden: str) -> Non
     assert "ui.app" in modules
     # `imported_names` 는 직접 import 만 낸다.
     assert [m for m in modules if forbidden in set(imported_names(m, files))] == []
+
+
+def command_imports(source: str) -> set[str]:
+    """명령 하나가 직접 import 하는 `scripts.` 아래의 모듈 가운데 공유 package 밖의 것."""
+    reached: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            module = node.module
+            names = [
+                f"{module}.{alias.name}" if module == "scripts" else module for alias in node.names
+            ]
+        else:
+            continue
+        reached |= {
+            name
+            for name in names
+            if name.startswith("scripts.") and not name.startswith("scripts.shared")
+        }
+    return reached
+
+
+def test_commands_do_not_import_each_other() -> None:
+    """명령(`scripts/` 바로 아래의 파일)이 함께 쓰는 코드는 `scripts/shared/` 에 둔다."""
+    found = {
+        path.name: command_imports(path.read_text(encoding="utf-8"))
+        for path in sorted((REPO_ROOT / "scripts").glob("*.py"))
+    }
+    assert {name: reached for name, reached in found.items() if reached} == {}
+
+
+@pytest.mark.parametrize(
+    ("source", "reached"),
+    [
+        ("from scripts.train import main", {"scripts.train"}),
+        ("from scripts import perft", {"scripts.perft"}),
+        ("import scripts.rate", {"scripts.rate"}),
+        ("from scripts.shared.setups import SETUPS", set()),
+        ("from scripts import shared", set()),
+    ],
+)
+def test_a_command_importing_another_is_caught(source: str, reached: set[str]) -> None:
+    assert command_imports(source) == reached

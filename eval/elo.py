@@ -30,11 +30,6 @@ class PairScore(Generic[PlayerT]):
     losses: float
 
 
-def expected_score(difference: float) -> float:
-    """점수가 `difference` 만큼 높은 쪽이 한 판에서 기대하는 성적 (승 1, 무 0.5)."""
-    return 1 / (1 + 10 ** (-difference / 400))
-
-
 def fit_elo(
     scores: Sequence[PairScore[PlayerT]],
     *,

@@ -8,6 +8,8 @@ from typing import Any
 
 from ai.logger import Logger
 
+WANDB_PROJECT = "gungi-zero"
+
 
 class WandbLogger:
     """wandb 의 run 에 남긴다. run 은 부르는 쪽이 만들고 끝낸다."""

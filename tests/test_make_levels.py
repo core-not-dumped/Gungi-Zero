@@ -7,8 +7,8 @@ import torch
 
 from ai.resnet import ResNet
 from scripts import make_levels, rate
-from scripts.levels import load_levels
-from scripts.train import SETUPS
+from scripts.shared.levels import load_levels
+from scripts.shared.setups import SETUPS
 from tests.test_rate import some_openings
 
 SETUP = SETUPS["nano-gungi"]

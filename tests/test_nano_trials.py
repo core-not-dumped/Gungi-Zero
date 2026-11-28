@@ -2,7 +2,7 @@
 
 from games.mini_gungi import Gungi
 from games.nano_gungi import NANO_GUNGI
-from scripts.nano_trials import involves_stacking
+from scripts.shared.trials import involves_stacking
 
 GAME = Gungi(NANO_GUNGI)
 

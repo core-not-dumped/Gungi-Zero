@@ -16,58 +16,18 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+import torch
+
 from ai.base import AI
 from ai.random_play import RandomAI
 from eval.ladder import play_pair
-from eval.perfect import PerfectAI
-from eval.solver import Solution
-from eval.trial_match import play_trials
-from eval.trial_positions import Trial
-from games.mini_gungi import Gungi
-from scripts.levels import checkpoint_player
-from scripts.nano_trials import fingerprint, nano_trials
-from scripts.openings import SOLVED_GAMES, openings_for
-from scripts.solve_nano import SOLUTION_PATH, load_solution_of
-from scripts.train import SETUPS, GameSetup
+from scripts.shared.grading import grade_trials
+from scripts.shared.openings import SOLVED_GAMES, openings_for
+from scripts.shared.players import checkpoint_player
+from scripts.shared.setups import SETUPS, GameSetup
+from scripts.shared.solution import SOLUTION_PATH
 
 Player = Callable[[int], AI[Any, Any]]
-
-
-def grade_trials(
-    setup: GameSetup,
-    solution_path: Path,
-    *,
-    trials: Sequence[Trial[Any]] | None = None,
-    solution: Solution[Any, Any] | None = None,
-) -> Callable[[Player], dict[str, Any]]:
-    """AI 를 시험 판에서 채점하는 함수. 풀이는 여기서 한 번 읽는다. `trials` 를 주면 2.5단계의
-    시험 판 대신 그것을, `solution` 을 주면 읽어 둔 풀이를 쓴다."""
-    if solution is None:
-        solution = load_solution_of(setup, solution_path)
-    if trials is None:
-        trials = nano_trials(solution)
-    game = solution.game
-    assert isinstance(game, Gungi)
-    mark = fingerprint(game, trials)
-
-    def grade(player: Player) -> dict[str, Any]:
-        results = play_trials(game, trials, player, lambda index: PerfectAI(solution, index))
-        names = dict.fromkeys(trial.stratum for trial in trials)
-        strata = []
-        for name in names:
-            passed = [result.passed for result in results if result.trial.stratum == name]
-            strata.append({"name": name, "passed": sum(passed), "total": len(passed)})
-        return {
-            "trials": {
-                "passed": sum(result.passed for result in results),
-                "total": len(results),
-                "failed": [index for index, result in enumerate(results) if not result.passed],
-                "strata": strata,
-                "fingerprint": mark,
-            }
-        }
-
-    return grade
 
 
 def grade_matches(
@@ -107,12 +67,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--game", choices=tuple(SETUPS), default="nano-gungi")
     parser.add_argument("--checkpoint", type=Path, nargs="+", required=True)
     parser.add_argument("--simulations", type=int, help="기본은 그 게임의 평가 탐색 횟수")
-    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--device", help="기본은 CUDA 가 있으면 cuda, 없으면 cpu")
     parser.add_argument("--solution", type=Path, default=SOLUTION_PATH)
     parser.add_argument("--openings", type=int, default=20, help="풀이가 없는 게임의 시작 판 수")
     parser.add_argument("--opponent", type=Path, help="풀이가 없는 게임에서 함께 둘 기준 세대")
     args = parser.parse_args(argv)
     setup = SETUPS[args.game]
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     simulations = args.simulations or setup.evaluation_simulations
     solved = setup.name in SOLVED_GAMES
     if solved and args.opponent:
@@ -123,12 +84,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(f"체크포인트가 없다: {missing}")
 
     def player_of(file: Path) -> Player:
-        ai = checkpoint_player(setup, file, simulations=simulations, device=args.device)
+        ai = checkpoint_player(setup, file, simulations=simulations, device=device)
         return lambda index: ai
 
     try:
         if solved:
-            grade = grade_trials(setup, args.solution)
+            grade_trial_file = grade_trials(
+                setup, args.solution, simulations=simulations, device=device
+            )
         else:
             opponents: list[tuple[str, Player]] = [
                 ("random", lambda index: RandomAI(setup.game, index))
@@ -144,7 +107,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "game": setup.name,
             "checkpoint": str(file),
             "simulations": simulations,
-            **grade(player_of(file)),
+            **(grade_trial_file(file) if solved else grade(player_of(file))),
         }
         print(json.dumps(result, ensure_ascii=False), flush=True)
     return 0

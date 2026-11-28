@@ -9,7 +9,9 @@ import pytest
 from ai.logger import MemoryLogger
 from ai.resnet import ResNetConfig
 from games.mini_gungi import Gungi
-from scripts.train import SETUPS, GameSetup, gungi_variant, main, run
+from scripts.shared.setups import SETUPS, GameSetup, gungi_variant
+from scripts.shared.training import run
+from scripts.train import main
 from tests.solver_helpers import SMALL_NANO
 
 

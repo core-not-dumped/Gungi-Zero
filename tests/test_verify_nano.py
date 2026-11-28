@@ -1,6 +1,7 @@
 """나노 군의 검증의 합성 루트: 2.5단계 완료 기준 (ADR-0007)."""
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ from eval.solver import Solution, Verdict, solve
 from eval.trial_positions import Stratum, select_trials
 from games.mini_gungi import Gungi
 from scripts import verify_nano
-from scripts.train import SETUPS
+from scripts.shared.setups import SETUPS
 from scripts.verify_nano import NanoVerification, measure, metrics_of
 from tests.solver_helpers import SMALL_NANO
 from tests.stub_networks import UniformNetwork
@@ -150,13 +151,19 @@ def test_the_command_trains_or_loads_then_reports_the_criterion_in_its_status(
     assert setup.name == run.config["game"]
 
 
+@pytest.mark.parametrize(
+    "config",
+    [SETUPS["nano-gungi"].network, ResNetConfig(2, 8)],
+    ids=["the-setup-network", "another-size"],
+)
 def test_a_saved_checkpoint_can_be_evaluated_without_training(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    config: ResNetConfig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """구조를 바꿔 학습한 체크포인트도 읽고, 읽은 구조를 적는다."""
     setup = SETUPS["nano-gungi"]
     game = setup.game
     torch.manual_seed(1)
-    saved = ResNet(game.tensor_shape, game.action_space_size, setup.network)
+    saved = ResNet(game.tensor_shape, game.action_space_size, config)
     path = tmp_path / "generation-0042.pt"
     torch.save(saved.state_dict(), path)
     run = FakeRun()
@@ -184,6 +191,7 @@ def test_a_saved_checkpoint_can_be_evaluated_without_training(
         torch.testing.assert_close(network.state_dict()[name], weights)
     assert run.config["checkpoint"] == str(path)
     assert run.config["variant"] == setup.variant
+    assert run.config["network"] == asdict(config)
     assert all("time/training_seconds" not in metrics for metrics, _ in run.logged)
     # 체크포인트의 세대에 적는다.
     assert run.logged[-1][1] == 42

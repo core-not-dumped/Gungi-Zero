@@ -23,9 +23,9 @@ from typing import Any, Literal
 
 import torch
 
+from ai.checkpoint import generation_of, load_network
 from ai.mcts import MCTS, MCTSAI
 from ai.network import Network
-from ai.resnet import ResNet
 from eval.best_move_rate import BestMoveRate, best_move_rate
 from eval.perfect import PerfectAI
 from eval.reachable import reachable_positions
@@ -34,21 +34,20 @@ from eval.trial_match import play_trials
 from eval.trial_positions import Trial
 from eval.value_agreement import Agreement, value_agreement
 from games.mini_gungi import Gungi
-from scripts.hyperparameters import (
+from scripts.shared.hyperparameters import (
     NANO_GUNGI_BEST_MOVE_SAMPLE,
     NANO_GUNGI_BEST_MOVE_SEED,
     NANO_GUNGI_EVALUATION_SIMULATIONS,
     NANO_GUNGI_EVALUATION_TEMPERATURE,
     NANO_GUNGI_GENERATIONS,
 )
-from scripts.loggers import PrintingLogger, TeeLogger, WandbLogger
-from scripts.nano_trials import fingerprint, involves_stacking, nano_trials
-from scripts.run_names import evaluation_name, training_name
-from scripts.solve_nano import SOLUTION_PATH, load_solution_of
-from scripts.train import SETUPS, new_checkpoint_dir
-from scripts.train import run as train_run
-
-WANDB_PROJECT = "gungi-zero"
+from scripts.shared.loggers import WANDB_PROJECT, PrintingLogger, TeeLogger, WandbLogger
+from scripts.shared.run_names import evaluation_name, training_name
+from scripts.shared.setups import SETUPS
+from scripts.shared.solution import SOLUTION_PATH, load_solution_of
+from scripts.shared.training import new_checkpoint_dir
+from scripts.shared.training import run as train_run
+from scripts.shared.trials import fingerprint, involves_stacking, nano_trials
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,9 +229,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         step = args.generations
     else:
-        game = setup.game
-        network = ResNet(game.tensor_shape, game.action_space_size, setup.network)
-        network.load_state_dict(torch.load(args.checkpoint, map_location="cpu", weights_only=True))
+        # 튜닝으로 구조를 바꿔 학습한 것일 수 있어 구조는 가중치에서 읽는다.
+        network = load_network(setup.game, args.checkpoint)
         network.to(args.device).eval()
         logger.config(
             {
@@ -240,12 +238,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "checkpoint": str(args.checkpoint),
                 "device": args.device,
                 "variant": setup.variant,
-                "network": asdict(setup.network),
+                "network": asdict(network.config),
             }
         )
-        # `generation-0042.pt` 의 42. 다른 이름이면 0 에 적는다.
-        number = args.checkpoint.stem.rpartition("-")[2]
-        step = int(number) if number.isdigit() else 0
+        # 체크포인트의 세대에 적는다. 체크포인트 이름이 아니면 0 이다.
+        step = generation_of(args.checkpoint) or 0
     # 읽기만 했으면 학습 시간이 없다.
     training_seconds = None
     if args.checkpoint is None:

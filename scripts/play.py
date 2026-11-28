@@ -42,8 +42,8 @@ def level_options(directory: Path) -> dict[str, list[tuple[str, OpponentFactory]
     if not found:
         return {}
     # torch 는 난이도가 있을 때만 읽는다.
-    from scripts.levels import load_levels, opponent_factory
-    from scripts.train import SETUPS
+    from scripts.shared.levels import load_levels, opponent_factory
+    from scripts.shared.setups import SETUPS
 
     offered = {}
     for variant, path in found.items():

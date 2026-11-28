@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 
 from scripts import tune
-from scripts.overrides import apply_overrides
-from scripts.run_names import evaluation_name, rating_name, training_name, tuning_name
-from scripts.train import SETUPS
+from scripts.shared.overrides import apply_overrides
+from scripts.shared.run_names import evaluation_name, rating_name, training_name, tuning_name
+from scripts.shared.setups import SETUPS
 
 NANO = SETUPS["nano-gungi"]
 
@@ -104,7 +104,7 @@ def test_one_experiment_trains_with_its_values_and_logs_the_mean_dev_score(
         for generation in (5, 10, 15, 20):
             (directory / f"generation-{generation:04d}.pt").touch()
 
-    def fake_grade(player: Any) -> dict:
+    def fake_grade(file: Path) -> dict:
         passed = next(scores)
         return {
             "trials": {
@@ -119,7 +119,6 @@ def test_one_experiment_trains_with_its_values_and_logs_the_mean_dev_score(
     monkeypatch.setattr(tune, "cached_dev_trials", lambda *args: ("dev",))
     monkeypatch.setattr(tune, "train_run", fake_train)
     monkeypatch.setattr(tune, "grade_trials", lambda *args, **kwargs: fake_grade)
-    monkeypatch.setattr(tune, "checkpoint_player", lambda *args, **kwargs: None)
     threads: list[int] = []
     monkeypatch.setattr(tune.torch, "set_num_threads", threads.append)
 

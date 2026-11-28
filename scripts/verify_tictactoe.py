@@ -24,12 +24,13 @@ from eval.perfect import PerfectAI
 from eval.solver import solve
 from eval.value_agreement import value_agreement
 from games.base import BoardOutcomeGame
-from scripts.hyperparameters import (
+from scripts.shared.hyperparameters import (
     TICTACTOE_EVALUATION_SIMULATIONS,
     TICTACTOE_EVALUATION_TEMPERATURE,
     TICTACTOE_GENERATIONS,
 )
-from scripts.train import SETUPS, GameSetup, new_checkpoint_dir, print_records, run
+from scripts.shared.setups import SETUPS, GameSetup
+from scripts.shared.training import new_checkpoint_dir, print_records, run
 
 # 완료 기준의 대국 시드. 시드마다 선수·후수로 한 판씩 둔다.
 MATCH_SEEDS = range(100)

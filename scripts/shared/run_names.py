@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+from ai.checkpoint import generation_of
+
 
 def _folder(directory: Path, game: str) -> str:
     """체크포인트 폴더 이름에서 게임 이름을 뗀 것 (`nano-gungi-seed0-night1` → `seed0-night1`)."""
@@ -16,8 +18,8 @@ def training_name(game: str, *, seed: int, episodes: int, steps: int, started: d
 
 
 def evaluation_name(game: str, checkpoint: Path) -> str:
-    number = checkpoint.stem.rpartition("-")[2]
-    generation = f"{int(number)}세대" if number.isdigit() else checkpoint.stem
+    number = generation_of(checkpoint)
+    generation = checkpoint.stem if number is None else f"{number}세대"
     return f"eval · {game} · {_folder(checkpoint.parent, game)} · {generation}"
 
 

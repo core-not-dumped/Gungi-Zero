@@ -14,10 +14,10 @@ from typing import Any, TypeVar
 
 from eval.openings import balanced_openings
 from games.mini_gungi import Gungi
-from scripts.hyperparameters import OPENING_DEPTH, OPENING_PLIES, OPENING_SEED
-from scripts.nano_trials import fingerprint, nano_trials
-from scripts.solve_nano import SOLUTION_PATH, load_solution_of
-from scripts.train import GameSetup
+from scripts.shared.hyperparameters import OPENING_DEPTH, OPENING_PLIES, OPENING_SEED
+from scripts.shared.setups import GameSetup
+from scripts.shared.solution import SOLUTION_PATH, load_solution_of
+from scripts.shared.trials import fingerprint, nano_trials
 
 ItemT = TypeVar("ItemT")
 

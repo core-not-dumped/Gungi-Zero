@@ -12,7 +12,10 @@ from typing import Any
 
 from eval.solver import Solution
 from eval.trial_positions import Trial, select_trials
-from scripts.nano_trials import nano_trials, strata_of
+from scripts.shared.trials import nano_trials, strata_of
+
+DEV_CACHE = Path("solutions/nano-gungi-dev-trials.pickle")
+
 
 DEV_TRIAL_SEED = 1
 

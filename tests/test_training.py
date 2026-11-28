@@ -19,7 +19,7 @@ from games.base import Game
 from games.mini_gungi import Gungi, PieceType, Placement
 from games.nano_gungi import NANO_GUNGI
 from games.tictactoe import TicTacToe
-from scripts.hyperparameters import NANO_GUNGI_SELF_PLAY, TICTACTOE_SELF_PLAY
+from scripts.shared.hyperparameters import NANO_GUNGI_SELF_PLAY, TICTACTOE_SELF_PLAY
 
 # 한 수 만에 수 제한 무승부로 끝나는 나노. 학습 샘플이 모두 초기 국면이고 가치 타깃이 0 이다.
 ONE_MOVE_NANO = Gungi(replace(NANO_GUNGI, move_limit=1))

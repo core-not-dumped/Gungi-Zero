@@ -13,8 +13,9 @@ from eval.solver import Solution, Verdict, solve
 from eval.trial_positions import Stratum, select_trials
 from games.mini_gungi import Gungi
 from scripts import grade
-from scripts.openings import Openings
-from scripts.train import SETUPS
+from scripts.shared import grading
+from scripts.shared.openings import Openings
+from scripts.shared.setups import SETUPS
 from tests.solver_helpers import SMALL_NANO
 
 
@@ -75,9 +76,9 @@ def test_a_solved_game_is_graded_on_its_trial_positions(
         Stratum("win", 2, lambda position, value: value.verdict is Verdict.WIN),
     )
     trials = select_trials(small, strata, seed=0)
-    monkeypatch.setattr(grade, "load_solution_of", lambda setup, path: small)
-    monkeypatch.setattr(grade, "nano_trials", lambda solution: trials)
-    monkeypatch.setattr(grade, "fingerprint", lambda game, trials: "abc")
+    monkeypatch.setattr(grading, "load_solution_of", lambda setup, path: small)
+    monkeypatch.setattr(grading, "nano_trials", lambda solution: trials)
+    monkeypatch.setattr(grading, "fingerprint", lambda game, trials: "abc")
     game = small.game
     network = ResNet(game.tensor_shape, game.action_space_size, SETUPS["nano-gungi"].network)
     path = tmp_path / "generation-0005.pt"

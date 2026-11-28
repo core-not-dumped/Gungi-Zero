@@ -5,18 +5,17 @@ from pathlib import Path
 import pytest
 import torch
 
-from ai.resnet import ResNet, ResNetConfig
-from scripts.levels import (
+from ai.resnet import ResNet
+from scripts.play import level_options
+from scripts.shared.levels import (
     Level,
     LevelSet,
     load_levels,
-    load_network,
     opponent_factory,
     pick_levels,
     save_levels,
 )
-from scripts.play import level_options
-from scripts.train import SETUPS
+from scripts.shared.setups import SETUPS
 
 SETUP = SETUPS["nano-gungi"]
 
@@ -91,18 +90,3 @@ def test_the_play_screen_offers_random_first_then_the_saved_levels(tmp_path: Pat
 
 def test_without_a_level_file_the_play_screen_has_no_levels(tmp_path: Path) -> None:
     assert level_options(tmp_path / "none") == {}
-
-
-@pytest.mark.parametrize(("blocks", "channels"), [(1, 4), (3, 8)])
-def test_a_checkpoint_of_another_size_is_read_from_its_weights(
-    blocks: int, channels: int, tmp_path: Path
-) -> None:
-    game = SETUP.game
-    saved = ResNet(game.tensor_shape, game.action_space_size, ResNetConfig(blocks, channels))
-    path = tmp_path / "generation-0001.pt"
-    torch.save(saved.state_dict(), path)
-
-    loaded = load_network(SETUP, path)
-
-    for name, weights in saved.state_dict().items():
-        torch.testing.assert_close(loaded.state_dict()[name], weights)

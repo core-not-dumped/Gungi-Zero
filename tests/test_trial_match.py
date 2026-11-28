@@ -2,14 +2,17 @@
 
 import pytest
 
+from ai.batched import EvaluationCache
+from ai.mcts import MCTS, MCTSAI
 from ai.random_play import RandomAI
 from eval.best_move_rate import best_move_rate
 from eval.perfect import PerfectAI
 from eval.solver import Solution, Verdict, solve
-from eval.trial_match import play_trials
+from eval.trial_match import play_trials, play_trials_together
 from eval.trial_positions import Stratum, Trial, select_trials
 from games.mini_gungi import Gungi
 from tests.solver_helpers import SMALL_NANO, shortest_path_positions
+from tests.test_batched import PerBoardNetwork
 
 STRATA = (
     Stratum("draw", 10, lambda position, value: value.verdict is Verdict.DRAW),
@@ -115,3 +118,56 @@ def test_the_best_move_rate_is_counted_overall_and_in_the_group(solution: Soluti
     assert (perfect.rest.matches, perfect.rest.positions) == (200 - odd, 200 - odd)
     assert random_ai.all.matches < 200
     assert random_ai.all.matches == random_ai.group.matches + random_ai.rest.matches
+
+
+@pytest.mark.parametrize(("parallel", "remember"), [(1, False), (7, False), (7, True)])
+def test_trials_played_together_equal_trials_played_one_by_one(
+    solution: Solution, trials: tuple[Trial, ...], parallel: int, remember: bool
+) -> None:
+    game = solution.game
+    chosen = trials[:20]
+    network = PerBoardNetwork(game.action_space_size)
+    search = MCTS(game, network, simulations=12)
+    alone = play_trials(
+        game,
+        chosen,
+        lambda index: MCTSAI(search, temperature=0.0, seed=index),
+        lambda index: PerfectAI(solution, index),
+    )
+    asked = sum(network.sizes)
+    network = PerBoardNetwork(game.action_space_size)
+    cache = EvaluationCache(10_000) if remember else None
+
+    together = play_trials_together(
+        game,
+        chosen,
+        MCTS(game, network, simulations=12),
+        lambda index: PerfectAI(solution, index),
+        network=network,
+        parallel=parallel,
+        cache=cache,
+    )
+
+    assert together == alone
+    if remember:
+        assert sum(network.sizes) < asked
+    else:
+        assert sum(network.sizes) == asked
+    assert max(network.sizes) <= parallel
+
+
+def test_losing_trials_are_refused_when_played_together_too(
+    solution: Solution, trials: tuple[Trial, ...]
+) -> None:
+    game = solution.game
+    network = PerBoardNetwork(game.action_space_size)
+
+    with pytest.raises(ValueError):
+        play_trials_together(
+            game,
+            trials,
+            MCTS(game, network, simulations=2),
+            lambda index: RandomAI(game, index),
+            network=network,
+            parallel=4,
+        )

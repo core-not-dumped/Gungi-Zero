@@ -12,3 +12,5 @@ solutions/
 wandb/
 # make_levels 가 만드는 난이도 단계
 levels/
+# Optuna study 의 저장 파일
+optuna/

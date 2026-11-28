@@ -5,7 +5,7 @@ uv run wandb agent <sweep ID>                 # 남은 실험을 차례로 돌�
 
 한 번만 돌려 보려면 `uv run python -m scripts.tune --experiment steps50 --seed 0` 이다.
 
-채점은 시험 판 200개가 아니라 연습용 판(`scripts.dev_trials`)이다. 점수는 마지막 체크포인트
+채점은 시험 판 200개가 아니라 연습용 판(`scripts.shared.dev_trials`)이다. 점수는 마지막 체크포인트
 `--graded`개의 통과 수 평균(`dev/passed`)이고, 완료 기준의 판정은 하지 않는다. 실험 계획은
 `docs/hyperparameter-search.md` 에 있다.
 """
@@ -21,20 +21,18 @@ from typing import Any, Literal
 
 import torch
 
-from scripts.dev_trials import DEV_TRIAL_SEED, cached_dev_trials
-from scripts.grade import grade_trials
-from scripts.levels import checkpoint_player
-from scripts.loggers import PrintingLogger, TeeLogger, WandbLogger
-from scripts.overrides import OVERRIDABLE, apply_overrides
-from scripts.rate import generation_files
-from scripts.run_names import tuning_name
-from scripts.solve_nano import SOLUTION_PATH, load_solution_of
-from scripts.train import CHECKPOINT_ROOT, SETUPS
-from scripts.train import run as train_run
-from scripts.verify_nano import WANDB_PROJECT
+from ai.checkpoint import generation_files
+from scripts.shared.dev_trials import DEV_CACHE, DEV_TRIAL_SEED, cached_dev_trials
+from scripts.shared.grading import grade_trials
+from scripts.shared.loggers import WANDB_PROJECT, PrintingLogger, TeeLogger, WandbLogger
+from scripts.shared.overrides import OVERRIDABLE, apply_overrides
+from scripts.shared.run_names import tuning_name
+from scripts.shared.setups import SETUPS
+from scripts.shared.solution import SOLUTION_PATH, load_solution_of
+from scripts.shared.training import CHECKPOINT_ROOT
+from scripts.shared.training import run as train_run
 
 GAME = "nano-gungi"
-DEV_CACHE = Path("solutions/nano-gungi-dev-trials.pickle")
 
 # 이름 → 지금 설정에서 바꾸는 값. 한 번에 한 가지씩 바꾼다.
 EXPERIMENTS: dict[str, dict[str, float]] = {
@@ -116,15 +114,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         device=args.device,
     )
 
-    # 채점은 CPU 에서 국면을 하나씩 평가한다. 스레드를 나누면 오히려 느리고, 함께 도는 다른 실험의
-    # 코어를 빼앗는다.
+    # 함께 도는 다른 실험의 코어를 빼앗지 않는다.
     torch.set_num_threads(1)
-    grade = grade_trials(setup, args.solution, trials=trials, solution=solution)
+    grade = grade_trials(
+        setup,
+        args.solution,
+        simulations=setup.evaluation_simulations,
+        device=args.device,
+        trials=trials,
+        solution=solution,
+    )
     files = list(generation_files(directory).items())[-args.graded :]
     graded = []
     for generation, file in files:
-        ai = checkpoint_player(setup, file, simulations=setup.evaluation_simulations, device="cpu")
-        result = grade(lambda index, ai=ai: ai)["trials"]
+        result = grade(file)["trials"]
         print(json.dumps({"generation": generation, **result}, ensure_ascii=False), flush=True)
         graded.append(result)
 

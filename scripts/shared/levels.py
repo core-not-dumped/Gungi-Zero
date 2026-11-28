@@ -12,14 +12,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-import torch
-
-from ai.mcts import MCTS, MCTSAI
 from ai.random_play import MixedAI
-from ai.resnet import ResNet, ResNetConfig
-from eval.ladder import MemoizedAI
-from scripts.hyperparameters import EVALUATION_TEMPERATURE
-from scripts.train import GameSetup
+from scripts.shared.players import checkpoint_player
+from scripts.shared.setups import GameSetup
 
 # git 에 넣지 않는다.
 LEVELS_DIR = Path("levels")
@@ -75,29 +70,6 @@ def load_levels(path: Path) -> LevelSet:
     return LevelSet(
         data["game"], data["simulations"], tuple(Level(**level) for level in data["levels"])
     )
-
-
-def load_network(setup: GameSetup, path: Path) -> ResNet:
-    """저장한 가중치를 읽는다. 블록 수와 채널 수는 가중치에서 읽어, 구조를 바꿔 학습한 것도
-    읽힌다."""
-    state = torch.load(path, map_location="cpu", weights_only=True)
-    config = ResNetConfig(
-        blocks=sum(name.endswith(".first.0.weight") for name in state),
-        channels=state["body.0.0.weight"].shape[0],
-    )
-    network = ResNet(setup.game.tensor_shape, setup.game.action_space_size, config)
-    network.load_state_dict(state)
-    return network
-
-
-def checkpoint_player(
-    setup: GameSetup, path: Path, *, simulations: int, device: str
-) -> MemoizedAI[Any, Any]:
-    """저장한 세대로 두는 평가용 MCTS AI. 국면마다 한 번만 탐색한다."""
-    network = load_network(setup, path)
-    network.to(device).eval()
-    search = MCTS(setup.game, network, simulations=simulations, device=device)
-    return MemoizedAI(MCTSAI(search, temperature=EVALUATION_TEMPERATURE, seed=0))
 
 
 def opponent_factory(

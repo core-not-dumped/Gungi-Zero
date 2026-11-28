@@ -9,8 +9,8 @@ import torch
 
 from ai.resnet import ResNet
 from scripts import rate
-from scripts.openings import Openings, spread
-from scripts.train import SETUPS
+from scripts.shared.openings import Openings, spread
+from scripts.shared.setups import SETUPS
 
 SETUP = SETUPS["nano-gungi"]
 

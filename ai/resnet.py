@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import torch
@@ -23,6 +24,14 @@ class ResNetConfig:
     def __post_init__(self) -> None:
         if self.blocks < 1 or self.channels < 1:
             raise ValueError(f"블록 수와 채널 수는 1 이상이다: {self}")
+
+    @classmethod
+    def of_weights(cls, state: Mapping[str, torch.Tensor]) -> ResNetConfig:
+        """`ResNet` 의 `state_dict` 에서 읽은 구조. 키 이름은 아래 `ResNet` 의 모양을 따른다."""
+        return cls(
+            blocks=sum(name.endswith(".first.0.weight") for name in state),
+            channels=state["body.0.0.weight"].shape[0],
+        )
 
 
 def _convolution(inputs: int, outputs: int, kernel: int) -> nn.Sequential:
@@ -57,6 +66,7 @@ class ResNet(nn.Module):
         config: ResNetConfig,
     ) -> None:
         super().__init__()
+        self.config = config
         planes, height, width = tensor_shape
         squares = height * width
         self.body = nn.Sequential(

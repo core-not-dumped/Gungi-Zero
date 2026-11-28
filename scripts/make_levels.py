@@ -20,25 +20,25 @@ from pathlib import Path
 from typing import Any
 
 from ai.base import AI
+from ai.checkpoint import generation_files
 from ai.random_play import MixedAI, RandomAI
 from eval.elo import PairScore, fit_elo
 from eval.ladder import play_pair
-from scripts.hyperparameters import (
+from scripts.shared.hyperparameters import (
     LEVEL_OPPONENTS,
     LEVEL_RANDOM_PROBABILITIES,
     LEVEL_STEP,
 )
-from scripts.levels import (
+from scripts.shared.levels import (
     Level,
     LevelSet,
-    checkpoint_player,
     levels_path,
     pick_levels,
     save_levels,
 )
-from scripts.openings import openings_for
-from scripts.rate import RANDOM, generation_files
-from scripts.train import SETUPS
+from scripts.shared.openings import openings_for
+from scripts.shared.players import RANDOM, checkpoint_player
+from scripts.shared.setups import SETUPS
 
 
 def read_rating_log(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:

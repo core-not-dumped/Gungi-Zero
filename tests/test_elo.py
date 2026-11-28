@@ -4,7 +4,12 @@ import math
 
 import pytest
 
-from eval.elo import PairScore, expected_score, fit_elo
+from eval.elo import PairScore, fit_elo
+
+
+def expected_score(difference: float) -> float:
+    """점수가 `difference` 만큼 높은 쪽이 한 판에서 기대하는 성적 (승 1, 무 0.5)."""
+    return 1 / (1 + 10 ** (-difference / 400))
 
 
 def test_the_rating_gap_reproduces_the_score_without_a_prior() -> None:

@@ -13,9 +13,10 @@ from eval.solver import Solution, Value, Verdict
 from games.base import Outcome
 from games.mini_gungi import Gungi, GungiPosition, VariantConfig
 from scripts import solve_nano
-from scripts.nano_trials import fingerprint, involves_stacking, nano_trials
-from scripts.solve_nano import PerfectEpisode, Report, load_solution_of, main, solve_to_file
-from scripts.train import SETUPS, GameSetup, gungi_variant
+from scripts.shared.setups import SETUPS, GameSetup, gungi_variant
+from scripts.shared.solution import load_solution_of
+from scripts.shared.trials import fingerprint, involves_stacking, nano_trials
+from scripts.solve_nano import PerfectEpisode, Report, main, solve_to_file
 from tests.solver_helpers import (
     FACING_MARSHALS,
     SMALL_NANO,

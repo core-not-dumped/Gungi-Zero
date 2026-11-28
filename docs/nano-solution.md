@@ -12,7 +12,7 @@ uv run python -m scripts.solve_nano
 
 `solutions/nano-gungi.pickle` (약 43 MB, git 제외)을 만들고, 그 파일을 다시 읽어 완벽한 상대끼리 시드 0~9 를 둔 뒤 수치를 JSON 한 줄로 찍는다. 시작 국면의 이론값과 다르게 끝난 대국이 있으면 종료 코드가 1 이다.
 
-읽을 때는 `scripts.solve_nano.load_solution_of(SETUPS["nano-gungi"], path)` 를 쓴다. 수 제한은 파일에 적힌 것을 쓰고, 파일에 적힌 변형 설정이 지금 설정과 다르면 거절한다. **룰 엔진이나 solver 가 바뀐 것은 알아채지 못하므로 그때는 다시 만든다.** 파일은 pickle 이라 직접 만든 것만 읽는다.
+읽을 때는 `scripts.shared.solution.load_solution_of(SETUPS["nano-gungi"], path)` 를 쓴다. 수 제한은 파일에 적힌 것을 쓰고, 파일에 적힌 변형 설정이 지금 설정과 다르면 거절한다. **룰 엔진이나 solver 가 바뀐 것은 알아채지 못하므로 그때는 다시 만든다.** 파일은 pickle 이라 직접 만든 것만 읽는다.
 
 ## 측정 (2026-11-28)
 

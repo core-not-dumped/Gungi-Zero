@@ -1,13 +1,20 @@
-"""시험 판 대국: 시험 판마다 둘 차례인 쪽을 `challenger` 가 잡고 한 판을 둔다."""
+"""시험 판 대국: 시험 판마다 둘 차례인 쪽을 `challenger` 가 잡고 한 판을 둔다.
+
+신경망으로 두는 MCTS 는 `play_trials_together` 로 여러 판을 함께 두며 평가를 묶는다.
+"""
 
 from __future__ import annotations
 
+import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Generic
 
 from ai.base import AI
+from ai.batched import EvaluationCache, Steps, run_batched
 from ai.episode import Episode, play_episode
+from ai.mcts import MCTS
+from ai.network import Network
 from eval.solver import Verdict
 from eval.trial_positions import Trial
 from games.base import Game, MoveT, Player, PositionT
@@ -42,9 +49,7 @@ def play_trials(
 
     지는 시험 판은 지킬 것이 없어 `ValueError` 다.
     """
-    for trial in trials:
-        if trial.value.verdict is Verdict.LOSS:
-            raise ValueError(f"지는 국면은 시험 판이 아니다: 층 {trial.stratum!r}")
+    _refuse_lost(trials)
     results = []
     for index, trial in enumerate(trials):
         tested, other = challenger(index), opponent(index)
@@ -57,3 +62,55 @@ def play_trials(
         )
         results.append(TrialResult(trial, episode))
     return tuple(results)
+
+
+def _refuse_lost(trials: Sequence[Trial[PositionT]]) -> None:
+    for trial in trials:
+        if trial.value.verdict is Verdict.LOSS:
+            raise ValueError(f"지는 국면은 시험 판이 아니다: 층 {trial.stratum!r}")
+
+
+def play_trials_together(
+    game: Game[PositionT, MoveT],
+    trials: Sequence[Trial[PositionT]],
+    search: MCTS[PositionT, MoveT],
+    opponent: Callable[[int], AI[PositionT, MoveT]],
+    *,
+    network: Network,
+    parallel: int,
+    device: str = "cpu",
+    cache: EvaluationCache | None = None,
+) -> tuple[TrialResult[PositionT, MoveT], ...]:
+    """`play_trials` 를 `parallel` 판까지 함께 두며 신경망 평가를 묶어 한다. 시험받는 쪽은
+    temperature 0 의 `search` 이고, 가장 많이 방문한 수가 여럿이면 시험 판의 순번을 시드로 고른다.
+
+    판을 따로따로 평가하는 `network` 라면, `challenger` 가 순번을 시드로 한 `MCTSAI` 인
+    `play_trials` 와 같은 대국이다. `search` 의 신경망은 쓰지 않고 `network` 가 평가한다. 지는 시험
+    판은 `ValueError` 다.
+    """
+    _refuse_lost(trials)
+
+    def one(index: int) -> Steps[TrialResult[PositionT, MoveT]]:
+        trial = trials[index]
+        tie_break, other = random.Random(index), opponent(index)
+        position = trial.position
+        moves: list[MoveT] = []
+        while (outcome := game.outcome(position)) is None:
+            if position.player is trial.position.player:
+                result = yield from search.search_steps(position)
+                move = result.select_move(0.0, tie_break)
+            else:
+                move = other.choose(position)
+            moves.append(move)
+            position = game.apply_move(position, move)
+        return TrialResult(trial, Episode(tuple(moves), position, outcome))
+
+    return tuple(
+        run_batched(
+            (one(index) for index in range(len(trials))),
+            network,
+            width=parallel,
+            device=device,
+            cache=cache,
+        )
+    )

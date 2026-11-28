@@ -12,7 +12,7 @@ from ai.self_play import play_self_play_episode, play_self_play_episodes
 from games.mini_gungi import Gungi
 from games.nano_gungi import NANO_GUNGI
 from games.tictactoe import TicTacToe
-from scripts.hyperparameters import NANO_GUNGI_SELF_PLAY, TICTACTOE_SELF_PLAY
+from scripts.shared.hyperparameters import NANO_GUNGI_SELF_PLAY, TICTACTOE_SELF_PLAY
 
 
 class PerBoardNetwork:

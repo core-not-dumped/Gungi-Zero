@@ -156,7 +156,7 @@ Gymnasium 은 모든 하위 환경이 끝나기를 기다리지 않으려고 자
 
 ### 지금 코드
 
-- `ai/mcts.py`: 신경망을 부르는 곳은 `MCTS._expand` 의 `evaluate(...)` 하나이고, `evaluate` 는 길이 1 의 `evaluate_batch` 다 (`ai/network.py`). `search` 는 루트를 한 번 펼친 뒤 `_simulate` 를 `simulations` 번 돈다. 끝난 국면에 닿은 시뮬레이션은 평가하지 않는다. 그래서 한 수의 forward 는 **최대 `1 + simulations` 번**이다(나노 군의는 `simulations=100`, `scripts/hyperparameters.py`).
+- `ai/mcts.py`: 신경망을 부르는 곳은 `MCTS._expand` 의 `evaluate(...)` 하나이고, `evaluate` 는 길이 1 의 `evaluate_batch` 다 (`ai/network.py`). `search` 는 루트를 한 번 펼친 뒤 `_simulate` 를 `simulations` 번 돈다. 끝난 국면에 닿은 시뮬레이션은 평가하지 않는다. 그래서 한 수의 forward 는 **최대 `1 + simulations` 번**이다(나노 군의는 `simulations=100`, `scripts/shared/hyperparameters.py`).
 - `ai/self_play.py`: `play_self_play_episode` 가 대국마다 `MCTS` 와 `random.Random(seed)` 를 따로 만든다. 가치 타깃은 대국이 끝난 뒤에야 채운다.
 - `ai/training.py`: `train` 이 `episodes_per_generation` 판(나노 200, 미니 100)을 차례로 끝내고 버퍼에 넣은 뒤 학습한다. 대국마다 `start_position(rng)`, `rng.getrandbits(63)` 순서로 난수를 쓰고, 학습 배치도 같은 `rng` 로 뽑는다.
 

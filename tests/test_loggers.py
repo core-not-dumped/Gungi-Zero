@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from ai.logger import MemoryLogger
-from scripts.loggers import PrintingLogger, TeeLogger, WandbLogger
+from scripts.shared.loggers import PrintingLogger, TeeLogger, WandbLogger
 
 
 class FakeConfig(dict):

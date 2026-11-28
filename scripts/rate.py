@@ -3,9 +3,9 @@
 uv run python -m scripts.rate --checkpoint-dir <폴더> --device cpu --workers 8
 uv run python -m scripts.rate --game mini-gungi --checkpoint-dir <폴더> --device cpu --workers 8
 
-시작 판은 게임에 맞춰 고른다(`scripts.openings`): 나노 군의는 시험 판이라 `scripts.solve_nano` 가
-만든 풀이가 있어야 하고, 풀이가 없는 게임은 몇 수 안에 승패가 정해지지 않는 판이다. 완벽한 상대는
-두지 않고, 참가자끼리 선후를 바꿔 둔다.
+시작 판은 게임에 맞춰 고른다(`scripts.shared.openings`): 나노 군의는 시험 판이라
+`scripts.solve_nano` 가 만든 풀이가 있어야 하고, 풀이가 없는 게임은 몇 수 안에 승패가 정해지지
+않는 판이다. 완벽한 상대는 두지 않고, 참가자끼리 선후를 바꿔 둔다.
 
 `--checkpoint-dir` 의 `generation-NNNN.pt` 들을 잰다. 대진의 간격은 저장한 순서로 센다.
 학습과 따로 새 run 을 만든다. step 은 세대 번호다.
@@ -33,38 +33,23 @@ from typing import Any, Literal
 import torch
 
 from ai.base import AI
+from ai.checkpoint import generation_files
 from ai.random_play import RandomAI
 from eval.elo import PairScore, fit_elo
 from eval.ladder import ladder_pairs, play_pair
-from scripts.hyperparameters import (
+from scripts.shared.hyperparameters import (
     ELO_ANCHORED_EVERY,
     ELO_GAPS,
     ELO_OPENINGS,
     ELO_PRIOR_DRAWS,
     EVALUATION_TEMPERATURE,
 )
-from scripts.levels import checkpoint_player
-from scripts.loggers import PrintingLogger, TeeLogger, WandbLogger
-from scripts.openings import openings_for
-from scripts.run_names import rating_name
-from scripts.solve_nano import SOLUTION_PATH
-from scripts.train import SETUPS
-from scripts.verify_nano import WANDB_PROJECT
-
-# 랜덤 AI 의 번호. 세대는 1 부터다.
-RANDOM = 0
-
-
-def generation_files(directory: Path) -> dict[int, Path]:
-    """세대 번호 → 체크포인트, 번호 순. 하나도 없으면 `ValueError` 다."""
-    files = {}
-    for file in directory.glob("generation-*.pt"):
-        number = file.stem.rpartition("-")[2]
-        if number.isdigit():
-            files[int(number)] = file
-    if not files:
-        raise ValueError(f"{directory} 에 체크포인트가 없다")
-    return dict(sorted(files.items()))
+from scripts.shared.loggers import WANDB_PROJECT, PrintingLogger, TeeLogger, WandbLogger
+from scripts.shared.openings import openings_for
+from scripts.shared.players import RANDOM, checkpoint_player
+from scripts.shared.run_names import rating_name
+from scripts.shared.setups import SETUPS
+from scripts.shared.solution import SOLUTION_PATH
 
 
 def anchored_generations(top: int) -> list[int]:

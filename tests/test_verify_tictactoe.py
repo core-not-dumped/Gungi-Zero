@@ -10,7 +10,7 @@ from ai.logger import MemoryLogger
 from ai.resnet import ResNetConfig
 from eval.match import Record
 from scripts import verify_tictactoe
-from scripts.train import SETUPS, GameSetup
+from scripts.shared.setups import SETUPS, GameSetup
 from scripts.verify_tictactoe import Verification, main, verify
 
 

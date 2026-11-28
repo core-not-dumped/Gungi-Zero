@@ -9,7 +9,7 @@ from typing import Any
 from ai.resnet import ResNetConfig
 from ai.self_play import SelfPlayConfig
 from ai.training import TrainingConfig
-from scripts.train import GameSetup
+from scripts.shared.setups import GameSetup
 
 _INTEGERS = (
     "episodes_per_generation",
@@ -20,6 +20,7 @@ _INTEGERS = (
     "exploration_moves",
     "parallel_games",
     "evaluation_cache",
+    "checkpoint_every",
     "blocks",
     "channels",
 )

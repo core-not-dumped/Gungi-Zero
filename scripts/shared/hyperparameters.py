@@ -83,6 +83,9 @@ NANO_GUNGI_BEST_MOVE_SAMPLE = 5000
 NANO_GUNGI_BEST_MOVE_SEED = 0
 
 # 아래의 실력 측정(`scripts.grade`·`rate`·`make_levels`)은 모든 게임이 함께 쓴다.
+# 시험 판 채점(`scripts.grade`·`tune`)에서 함께 두는 판 수와 답을 기억하는 판 수의 상한.
+GRADE_PARALLEL_TRIALS = 64
+GRADE_EVALUATION_CACHE = 200_000
 # 평가 AI 의 temperature. 탐색 횟수는 게임마다의 평가 값을 쓴다.
 EVALUATION_TEMPERATURE = 0.0
 # 풀이가 없는 게임의 시작 판: 초기 국면에서 무작위로 두는 수의 범위, 이 깊이 안에 승패가

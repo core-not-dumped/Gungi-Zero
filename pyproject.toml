@@ -5,6 +5,7 @@ description = "AlphaZero-style self-play reinforcement learning for Gungi"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "numpy>=2.1",
+    "optuna>=5.1.0",
     "pygame>=2.6",
     "torch>=2.15",
     "wandb>=0.31.2",
