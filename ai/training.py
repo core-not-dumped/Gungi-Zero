@@ -16,9 +16,11 @@ from typing import Any
 import numpy as np
 import torch
 
+from ai.batched import EvaluationCache
+from ai.graphed import GraphedNetwork
 from ai.logger import Logger
-from ai.network import to_tensor
-from ai.self_play import SelfPlayConfig, SelfPlayResult, TrainingSample, play_self_play_episode
+from ai.network import Network, to_tensor
+from ai.self_play import SelfPlayConfig, SelfPlayResult, TrainingSample, play_self_play_episodes
 from games.base import Game, MoveT, Outcome, PositionT
 
 
@@ -37,6 +39,14 @@ class TrainingConfig:
     batch_size: int
     learning_rate: float = 1e-3
     weight_decay: float = 1e-4
+    # 몇 세대마다 체크포인트를 남기는지. 마지막 세대는 늘 남긴다.
+    checkpoint_every: int = 1
+    # 함께 두며 신경망 평가를 묶는 자가 대국 수. 1 이면 한 판씩 둔다.
+    parallel_games: int = 1
+    # 한 세대의 자가 대국에서 답을 기억하는 판 수의 상한. 0 이면 기억하지 않는다.
+    evaluation_cache: int = 0
+    # CUDA 에서 자가 대국의 평가를 기록해 재생한다 (`ai.graphed`). 다른 장치에서는 쓰지 않는다.
+    cuda_graph: bool = False
 
     def __post_init__(self) -> None:
         counts = (
@@ -44,10 +54,14 @@ class TrainingConfig:
             "buffer_generations",
             "steps_per_generation",
             "batch_size",
+            "checkpoint_every",
+            "parallel_games",
         )
         for name in counts:
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} 은 1 이상이다: {getattr(self, name)}")
+        if self.evaluation_cache < 0:
+            raise ValueError(f"evaluation_cache 는 0 이상이다: {self.evaluation_cache}")
 
 
 def seed_everything(seed: int) -> None:
@@ -79,15 +93,16 @@ def train(
 ) -> None:
     """`network`(`Network` 프로토콜을 따르는 모듈)를 `generations` 세대 학습시킨다.
 
-    `network` 를 `device` 로 옮겨 그 자리에서 바꾸고, 평가 모드로 남긴다. 세대마다 그 세대의
-    `state_dict` 를 `checkpoint_dir` 에 저장하고, 그곳에 이미 체크포인트가 있으면 시작하기 전에
-    `FileExistsError` 다. `end_reason` 은 끝난 국면의 종료 사유 이름이다 — `Game` 은 답하지
-    않아 게임을 아는 쪽이 넘긴다.
+    `network` 를 `device` 로 옮겨 그 자리에서 바꾸고, 평가 모드로 남긴다.
+    `config.checkpoint_every` 세대마다와 마지막 세대의 `state_dict` 를 `checkpoint_dir` 에
+    저장하고, 그곳에 이미 체크포인트가 있으면 시작하기 전에 `FileExistsError` 다. `end_reason` 은
+    끝난 국면의 종료 사유 이름이다 — `Game` 은 답하지 않아 게임을 아는 쪽이 넘긴다.
 
     `start_position` 은 자가 대국 한 판을 시작할 국면을 고른다. 대국마다 한 번, 학습의 난수를
     받아 부른다. 없으면 모든 대국이 초기 국면에서 시작한다.
 
-    같은 시드, 같은 처음 가중치는 CPU 에서 같은 세대 가중치를 만든다.
+    같은 시드, 같은 처음 가중치, 같은 설정은 CPU 에서 같은 세대 가중치를 만든다. `parallel_games` 를
+    바꾸면 평가를 묶는 크기가 달라져 부동소수점 끝자리부터 갈릴 수 있다.
     """
     # 다른 학습의 세대가 섞이면 세대 사이의 비교가 조용히 틀린다.
     if any(checkpoint_dir.glob(CHECKPOINT_PATTERN.format("*"))):
@@ -104,20 +119,28 @@ def train(
 
     for generation in range(1, generations + 1):
         network.eval()
-        results = []
+        # 대국의 시작 국면과 시드를 먼저 대국 순서로 뽑는다. 함께 두는 판 수가 난수의 순서를
+        # 바꾸지 않는다. 시작 국면을 고르지 않으면 난수를 쓰지 않는다.
+        games = []
         for _ in range(config.episodes_per_generation):
-            # 시작 국면을 고르지 않으면 난수를 쓰지 않는다. 같은 시드의 결과가 그대로다.
             start = None if start_position is None else start_position(rng)
-            results.append(
-                play_self_play_episode(
-                    game,
-                    network,
-                    config.self_play,
-                    seed=rng.getrandbits(63),
-                    device=device,
-                    start=start,
-                )
-            )
+            games.append((rng.getrandbits(63), start))
+        # 둘 다 가중치가 그대로인 이번 자가 대국에서만 쓴다.
+        cache = EvaluationCache(config.evaluation_cache) if config.evaluation_cache else None
+        evaluator: Network = network
+        if config.cuda_graph and torch.device(device).type == "cuda":
+            evaluator = GraphedNetwork(network, game.tensor_shape, config.parallel_games, device)
+        results = play_self_play_episodes(
+            game,
+            evaluator,
+            config.self_play,
+            games,
+            parallel=config.parallel_games,
+            device=device,
+            cache=cache,
+        )
+        # 기록이 잡은 GPU 메모리를 학습 전에 놓는다.
+        del evaluator
         buffer.append([sample for result in results for sample in result.samples])
         samples = [sample for generation_samples in buffer for sample in generation_samples]
 
@@ -131,9 +154,12 @@ def train(
         policy, value = (sum(column) / len(losses) for column in zip(*losses, strict=True))
         metrics = {"loss/total": policy + value, "loss/policy": policy, "loss/value": value}
         metrics |= _self_play_metrics(results, end_reason)
+        if cache is not None:
+            metrics["self_play/remembered_fraction"] = 1 - cache.evaluated / cache.asked
         metrics["replay_buffer/samples"] = len(samples)
-        # 기록한 세대는 체크포인트가 있도록 먼저 저장한다.
-        torch.save(network.state_dict(), checkpoint_path(checkpoint_dir, generation))
+        # 저장하는 세대는 기록보다 체크포인트가 먼저 있도록 한다.
+        if generation % config.checkpoint_every == 0 or generation == generations:
+            torch.save(network.state_dict(), checkpoint_path(checkpoint_dir, generation))
         logger.log(metrics, step=generation)
 
 

@@ -18,13 +18,18 @@ from ai.logger import Logger, MemoryLogger
 from ai.resnet import ResNet, ResNetConfig
 from ai.training import TrainingConfig, seed_everything, train
 from games.base import Game
-from games.mini_gungi import Gungi, VariantConfig
+from games.mini_gungi import MINI_GUNGI, Gungi, VariantConfig
 from games.nano_gungi import NANO_GUNGI
 from games.tictactoe import SIZE, TicTacToe
 from scripts.hyperparameters import (
+    MINI_GUNGI_EVALUATION_SIMULATIONS,
+    MINI_GUNGI_NETWORK,
+    MINI_GUNGI_TRAINING,
+    NANO_GUNGI_EVALUATION_SIMULATIONS,
     NANO_GUNGI_INITIAL_START_FRACTION,
     NANO_GUNGI_NETWORK,
     NANO_GUNGI_TRAINING,
+    TICTACTOE_EVALUATION_SIMULATIONS,
     TICTACTOE_NETWORK,
     TICTACTOE_TRAINING,
 )
@@ -49,6 +54,8 @@ class GameSetup:
     # 자가 대국 가운데 초기 국면에서 시작하는 판의 비율. 1 보다 작으면 나머지는 `mixed_starts` 가
     # 고른 국면에서 시작한다.
     initial_start_fraction: float = 1.0
+    # 실력을 잴 때의 MCTS 탐색 횟수.
+    evaluation_simulations: int = 100
 
 
 def gungi_variant(config: VariantConfig) -> dict[str, Any]:
@@ -66,8 +73,17 @@ def gungi_variant(config: VariantConfig) -> dict[str, Any]:
     }
 
 
-def _nano_gungi() -> GameSetup:
-    game = Gungi(NANO_GUNGI)
+def _gungi(
+    name: str,
+    config: VariantConfig,
+    network: ResNetConfig,
+    training: TrainingConfig,
+    *,
+    evaluation_simulations: int,
+    initial_start_fraction: float = 1.0,
+) -> GameSetup:
+    """군의 변형 하나의 설정. 새 변형은 `Gungi` 가 받는 설정이면 여기에 더하면 된다."""
+    game = Gungi(config)
 
     def end_reason(position: Any) -> str:
         reason = game.end_reason(position)
@@ -75,13 +91,14 @@ def _nano_gungi() -> GameSetup:
         return reason.name
 
     return GameSetup(
-        "nano-gungi",
+        name,
         game,
-        gungi_variant(NANO_GUNGI),
+        gungi_variant(config),
         end_reason,
-        NANO_GUNGI_NETWORK,
-        NANO_GUNGI_TRAINING,
-        NANO_GUNGI_INITIAL_START_FRACTION,
+        network,
+        training,
+        initial_start_fraction,
+        evaluation_simulations,
     )
 
 
@@ -103,10 +120,38 @@ def _tictactoe() -> GameSetup:
         "move_limit": None,
         "repetition_limit": None,
     }
-    return GameSetup("tictactoe", game, variant, end_reason, TICTACTOE_NETWORK, TICTACTOE_TRAINING)
+    return GameSetup(
+        "tictactoe",
+        game,
+        variant,
+        end_reason,
+        TICTACTOE_NETWORK,
+        TICTACTOE_TRAINING,
+        evaluation_simulations=TICTACTOE_EVALUATION_SIMULATIONS,
+    )
 
 
-SETUPS: dict[str, GameSetup] = {setup.name: setup for setup in (_tictactoe(), _nano_gungi())}
+SETUPS: dict[str, GameSetup] = {
+    setup.name: setup
+    for setup in (
+        _tictactoe(),
+        _gungi(
+            "nano-gungi",
+            NANO_GUNGI,
+            NANO_GUNGI_NETWORK,
+            NANO_GUNGI_TRAINING,
+            evaluation_simulations=NANO_GUNGI_EVALUATION_SIMULATIONS,
+            initial_start_fraction=NANO_GUNGI_INITIAL_START_FRACTION,
+        ),
+        _gungi(
+            "mini-gungi",
+            MINI_GUNGI,
+            MINI_GUNGI_NETWORK,
+            MINI_GUNGI_TRAINING,
+            evaluation_simulations=MINI_GUNGI_EVALUATION_SIMULATIONS,
+        ),
+    )
+}
 
 
 def run(

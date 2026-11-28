@@ -46,9 +46,9 @@ def test_the_nano_variant_is_recorded_as_it_is(tmp_path: Path) -> None:
         "height": 4,
         "max_tier": 2,
         "pieces": [
-            {"kind": "GENERAL", "column": 0, "row": 0},
+            {"kind": "GENERAL", "column": 2, "row": 1},
             {"kind": "MARSHAL", "column": 1, "row": 0},
-            {"kind": "PAWN", "column": 2, "row": 1},
+            {"kind": "PAWN", "column": 2, "row": 0},
         ],
         "move_limit": 200,
         "repetition_limit": 3,

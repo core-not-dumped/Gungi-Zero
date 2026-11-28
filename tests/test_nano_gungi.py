@@ -25,10 +25,10 @@ def test_the_initial_position() -> None:
     game = Gungi(NANO_GUNGI)
     assert game.render(game.initial_position()) == (
         "     a       b       c\n"
-        " 4   .      ▽帥     ▽大\n"
-        " 3  ▽兵      .       .\n"
-        " 2   .       .      ▲兵\n"
-        " 1  ▲大     ▲帥      .\n"
+        " 4  ▽兵     ▽帥      .\n"
+        " 3  ▽大      .       .\n"
+        " 2   .       .      ▲大\n"
+        " 1   .      ▲帥     ▲兵\n"
         "차례: ▲   ply: 0\n"
     )
 

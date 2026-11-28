@@ -12,8 +12,8 @@ NANO_GUNGI = replace(
     width=3,
     height=4,
     setup=(
-        Placement(PieceType.GENERAL, column=0, row=0),
+        Placement(PieceType.GENERAL, column=2, row=1),
         Placement(PieceType.MARSHAL, column=1, row=0),
-        Placement(PieceType.PAWN, column=2, row=1),
+        Placement(PieceType.PAWN, column=2, row=0),
     ),
 )

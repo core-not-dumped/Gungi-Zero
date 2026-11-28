@@ -4,8 +4,8 @@ uv run python -m scripts.solve_nano                    # 풀이가 없으면 먼
 uv run python -m scripts.verify_nano --device cuda     # 처음부터 학습하고 잰다
 uv run python -m scripts.verify_nano --device cuda --checkpoint <파일>   # 저장한 세대만 잰다
 
-학습한 MCTS AI 가 시험 판 200개를 모두 통과하고 시작 국면의 3수 퍼즐을 풀면 종료 코드가 0,
-아니면 1 이다. 층마다의 성적과 진단(가치 일치율, 최선수 비율)을 함께 낸다. 학습 없이 wandb 를
+학습한 MCTS AI 가 시험 판 200개를 모두 통과하면 종료 코드가 0, 아니면 1 이다.
+층마다의 성적과 진단(가치 일치율, 최선수 비율)을 함께 낸다. 학습 없이 wandb 를
 거치지 않으려면 `--wandb disabled` 를, 로그인하지 않고 파일로 남기려면 `--wandb offline` 을 쓴다.
 """
 
@@ -15,14 +15,14 @@ import argparse
 import json
 import random
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 import torch
 
-from ai.base import AI
 from ai.mcts import MCTS, MCTSAI
 from ai.network import Network
 from ai.resnet import ResNet
@@ -33,7 +33,7 @@ from eval.solver import Solution
 from eval.trial_match import play_trials
 from eval.trial_positions import Trial
 from eval.value_agreement import Agreement, value_agreement
-from games.mini_gungi import EndReason, Gungi
+from games.mini_gungi import Gungi
 from scripts.hyperparameters import (
     NANO_GUNGI_BEST_MOVE_SAMPLE,
     NANO_GUNGI_BEST_MOVE_SEED,
@@ -43,13 +43,12 @@ from scripts.hyperparameters import (
 )
 from scripts.loggers import PrintingLogger, TeeLogger, WandbLogger
 from scripts.nano_trials import fingerprint, involves_stacking, nano_trials
+from scripts.run_names import evaluation_name, training_name
 from scripts.solve_nano import SOLUTION_PATH, load_solution_of
 from scripts.train import SETUPS, new_checkpoint_dir
 from scripts.train import run as train_run
 
 WANDB_PROJECT = "gungi-zero"
-# 시작 국면의 3수 퍼즐에서 둘 첫 수 (docs/nano-solution.md).
-PUZZLE_MOVE = "a1-a3^"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,27 +58,6 @@ class StratumScore:
     name: str
     passed: int
     total: int
-
-
-@dataclass(frozen=True, slots=True)
-class Reply:
-    """3수 퍼즐의 응수 하나: 후수의 수, AI 가 이어 둔 수, 그 수가 帥 를 잡았는지."""
-
-    reply: str
-    move: str
-    captured: bool
-
-
-@dataclass(frozen=True, slots=True)
-class Puzzle:
-    """시작 국면의 3수 퍼즐. 첫 수와, `PUZZLE_MOVE` 뒤의 응수마다의 답이다."""
-
-    first_move: str
-    replies: tuple[Reply, ...]
-
-    @property
-    def passed(self) -> bool:
-        return self.first_move == PUZZLE_MOVE and all(reply.captured for reply in self.replies)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,35 +77,10 @@ class Measurement:
 class NanoVerification(Measurement):
     """검증 한 번의 결과."""
 
-    puzzle: Puzzle
-
     @property
     def passed(self) -> bool:
-        """완료 기준: 시험 판 전부와 3수 퍼즐."""
-        return not self.failed_trials and self.puzzle.passed
-
-
-def solve_puzzle(game: Gungi, ai: Callable[[int], AI[Any, Any]]) -> Puzzle:
-    """`ai` 는 물음의 순번을 받아 AI 를 만든다. 첫 수가 0, 응수들이 1 부터다.
-
-    첫 수가 틀려도 응수는 `PUZZLE_MOVE` 를 둔 국면에서 묻는다.
-    """
-    start = game.initial_position()
-    first = ai(0).choose(start)
-    after = game.apply_move(start, game.parse_move(PUZZLE_MOVE))
-    replies = []
-    for index, reply in enumerate(game.legal_moves(after), start=1):
-        position = game.apply_move(after, reply)
-        move = ai(index).choose(position)
-        reason = game.end_reason(game.apply_move(position, move))
-        replies.append(
-            Reply(
-                game.render_move(reply),
-                game.render_move(move),
-                reason is EndReason.MARSHAL_CAPTURE,
-            )
-        )
-    return Puzzle(game.render_move(first), tuple(replies))
+        """완료 기준: 시험 판 전부."""
+        return not self.failed_trials
 
 
 def _mcts_ai(
@@ -190,7 +143,7 @@ def evaluate_network(
     *,
     device: str,
 ) -> NanoVerification:
-    """실제 설정으로 시험 판, 진단, 3수 퍼즐을 모두 잰다."""
+    """실제 설정으로 시험 판과 진단을 모두 잰다."""
     game = solution.game
     assert isinstance(game, Gungi)
     simulations = NANO_GUNGI_EVALUATION_SIMULATIONS
@@ -202,13 +155,11 @@ def evaluate_network(
         device=device,
         best_move_sample=NANO_GUNGI_BEST_MOVE_SAMPLE,
     )
-    puzzle = solve_puzzle(game, lambda index: _mcts_ai(game, network, simulations, device, index))
     return NanoVerification(
         measured.strata,
         measured.failed_trials,
         measured.value_agreement,
         measured.best_move_rates,
-        puzzle,
     )
 
 
@@ -219,9 +170,6 @@ def metrics_of(result: NanoVerification) -> dict[str, float]:
         metrics[f"trial/{stratum.name}/total"] = stratum.total
     metrics["trial/passed"] = sum(stratum.passed for stratum in result.strata)
     metrics["trial/total"] = sum(stratum.total for stratum in result.strata)
-    metrics["puzzle/first_move"] = int(result.puzzle.first_move == PUZZLE_MOVE)
-    metrics["puzzle/replies_captured"] = sum(reply.captured for reply in result.puzzle.replies)
-    metrics["puzzle/replies"] = len(result.puzzle.replies)
     metrics["diagnostic/value_agreement"] = result.value_agreement.rate
     rates = result.best_move_rates
     for name, agreement in (("all", rates.all), ("stacking", rates.group), ("plain", rates.rest)):
@@ -239,7 +187,7 @@ def start_wandb(mode: Literal["online", "offline", "disabled"]) -> Any:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="나노 군의로 학습해 시험 판과 3수 퍼즐을 잰다")
+    parser = argparse.ArgumentParser(description="나노 군의로 학습해 시험 판을 잰다")
     parser.add_argument("--seed", type=int, default=0, help="학습의 시드")
     parser.add_argument("--generations", type=int, default=NANO_GUNGI_GENERATIONS)
     parser.add_argument("--device", default="cuda")
@@ -257,6 +205,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     # 풀이가 없거나 낡았으면 학습에 시간을 쓰기 전에 멈춘다.
     solution = load_solution_of(setup, args.solution)
     wandb_run = start_wandb(args.wandb)
+    if args.checkpoint is None:
+        wandb_run.name = training_name(
+            setup.name,
+            seed=args.seed,
+            episodes=setup.training.episodes_per_generation,
+            steps=setup.training.steps_per_generation,
+            started=datetime.now(),
+        )
+    else:
+        wandb_run.name = evaluation_name(setup.name, args.checkpoint)
     logger = TeeLogger(PrintingLogger(), WandbLogger(wandb_run))
     started = time.perf_counter()
     if args.checkpoint is None:

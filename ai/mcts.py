@@ -20,8 +20,9 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
+from ai.batched import Steps, run_alone
 from ai.episode import value_for
-from ai.network import Network, evaluate
+from ai.network import Network
 from games.base import Game, MoveT, PositionT
 
 DEFAULT_C_PUCT = 1.25
@@ -109,8 +110,12 @@ class MCTS(Generic[PositionT, MoveT]):
 
     def search(self, position: PositionT) -> SearchResult[MoveT]:
         """`position` 에서 탐색한다. 끝난 국면이거나 `canonical` 이 돌려준 국면이면 `ValueError`."""
+        return run_alone(self.search_steps(position), self._network, self._device)
+
+    def search_steps(self, position: PositionT) -> Steps[SearchResult[MoveT]]:
+        """`search` 를 평가마다 멈추는 작업으로 (`ai.batched`). 신경망을 직접 부르지 않는다."""
         root: _Node[PositionT, MoveT] = _Node(position)
-        self._expand(root)
+        yield from self._expand(root)
         if root.terminal_value is not None:
             raise ValueError("끝난 국면은 탐색할 수 없다")
         # 루트를 평가한 것도 방문이다. 0 이면 첫 선택이 사전 확률을 보지 못한다.
@@ -118,10 +123,10 @@ class MCTS(Generic[PositionT, MoveT]):
         if self._root_noise is not None:
             self._add_noise(root, self._root_noise)
         for _ in range(self._simulations):
-            self._simulate(root)
+            yield from self._simulate(root)
         return self._result(root)
 
-    def _simulate(self, root: _Node[PositionT, MoveT]) -> None:
+    def _simulate(self, root: _Node[PositionT, MoveT]) -> Steps[None]:
         """루트에서 PUCT 로 내려가 새 국면 하나(또는 끝난 국면)에 닿고 그 가치를 거슬러 올린다."""
         path = [root]
         node = root
@@ -131,7 +136,7 @@ class MCTS(Generic[PositionT, MoveT]):
             if child is None:
                 child = _Node(self._game.apply_move(node.position, node.moves[index]))
                 node.children[index] = child
-                value = self._expand(child)
+                value = yield from self._expand(child)
                 path.append(child)
                 break
             node = child
@@ -140,7 +145,7 @@ class MCTS(Generic[PositionT, MoveT]):
             value = node.terminal_value
         self._backup(path, value)
 
-    def _expand(self, node: _Node[PositionT, MoveT]) -> float:
+    def _expand(self, node: _Node[PositionT, MoveT]) -> Steps[float]:
         """국면을 평가해 둘 차례인 쪽 시점의 가치를 돌려준다.
 
         끝난 국면은 신경망이 아니라 규칙으로 평가한다. 진행 중이면 합법수와 사전 확률을 채운다.
@@ -153,7 +158,7 @@ class MCTS(Generic[PositionT, MoveT]):
 
         node.moves = game.legal_moves(node.position)
         node.children = [None] * len(node.moves)
-        logits, value = evaluate(self._network, game.encode(node.position), self._device)
+        logits, value = yield game.encode(node.position)
         indices = canonical_action_indices(game, node.position, node.moves)
         legal = logits[indices].astype(np.float64)
         # 합법수만의 softmax. 가장 큰 로짓을 빼 넘치지 않게 한다.

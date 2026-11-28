@@ -44,9 +44,10 @@ explicit = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-# 몇 분이 걸리는 검증은 `slow` 로 표시하고 기본 실행에서 뺀다. `uv run pytest -m slow` 로 돌린다.
-addopts = "-q -m 'not slow'"
-markers = ["slow: 몇 분이 걸리는 검증. 로컬에서만 돌린다"]
+# 처음부터 학습하거나 푸는 검증은 `from_scratch` 로 표시하고 기본 실행에서 뺀다 (몇십 분).
+# `uv run pytest -m from_scratch` 로 돌린다.
+addopts = "-q -m 'not from_scratch'"
+markers = ["from_scratch: 처음부터 학습하거나 푸는 검증. 몇십 분이 걸려 로컬에서만 돌린다"]
 
 [tool.ruff]
 target-version = "py311"

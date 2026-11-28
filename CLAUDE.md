@@ -7,7 +7,7 @@ MCTS·자가 대국·학습 루프는 프레임워크 없이 직접 구현한다
 
 ## 현재: 2.5단계 — 나노 군의 검증
 
-완료 기준: 완벽한 상대와 **풀이에서 뽑은 시험 판 200개에서 이론값**을 지키고 시작 국면의 3수 퍼즐을 푼다 (`.scratch/alphazero-verification/spec.md`, ADR-0007).
+완료 기준: 완벽한 상대와 **풀이에서 뽑은 시험 판 200개에서 이론값**을 지킨다 (`.scratch/alphazero-verification/spec.md`, ADR-0007).
 
 설계하기 전에 읽는다.
 
@@ -20,16 +20,20 @@ MCTS·자가 대국·학습 루프는 프레임워크 없이 직접 구현한다
 ### 나노 군의 풀이
 
 - `uv run python -m scripts.solve_nano` — 나노 군의를 풀어 `solutions/` 에 저장한다(git 제외). 룰 엔진이나 solver 를 바꾸면 다시 만든다.
-- `uv run python -m scripts.verify_nano --device cuda` — 나노 군의로 학습해 시험 판과 3수 퍼즐을 잰다(wandb 기록). 1차 시도(2026-11-27)는 149/200 으로 통과하지 못했다 (`docs/nano-verification-report.md`).
-- 시작 국면의 이론값은 **선수 승(DTM 3)** 이다. 그래서 검증은 시작 국면이 아니라 시험 판으로 하고, 자가 대국도 도달 가능한 여러 판에서 시작한다.
+- `uv run python -m scripts.verify_nano --device cuda` — 나노 군의로 학습해 시험 판을 잰다(wandb 기록). 2026-11-28 에 시작 배치를 바꿔 새 배치의 결과는 아직 없다. 이전 배치의 결과는 `docs/nano-verification-report.md`.
+- `uv run wandb sweep sweeps/nano-wide.yaml` 뒤 `uv run wandb agent <ID>` — 튜닝 실험을 차례로 돌린다(`scripts.tune`). 채점은 시험 판이 아니라 연습용 판이다. 시험 판 점수로 설정을 고르지 않는다.
+- `uv run python -m scripts.grade --checkpoint <파일>…` — 저장한 세대를 빠르게 채점한다(나노는 시험 판, 그 밖의 게임은 랜덤 AI·기준 세대와의 대국). `--game mini-gungi` 로 게임을 고른다.
+- `uv run python -m scripts.rate --checkpoint-dir <폴더> > <기록>` — 저장한 세대마다 Elo(랜덤 AI 0점)를 매겨 wandb 의 새 run 에 적는다. `--game` 으로 게임을 고른다. 나노의 시작 판은 시험 판이라 풀이가 있어야 하고, 그 밖은 3수 안에 승패가 강제되지 않는 판이다. 이 대진 안의 상대값이라 완료 기준을 대신하지 않는다.
+- `uv run python -m scripts.make_levels --elo-log <기록>` — 200 Elo 간격의 난이도 단계를 `levels/` 에 저장한다(git 제외). 있으면 `scripts.play` 의 나노 군의에서 고를 수 있다.
+- 시작 국면의 이론값은 **무승부** 이고 지지 않는 첫 수는 `c2-c1^` 하나다. 그래도 검증은 시작 국면이 아니라 시험 판으로 하고, 자가 대국도 도달 가능한 여러 판에서 시작한다.
 - `uv run python -m scripts.nano_trials` — 풀이에서 시험 판을 뽑아 층마다의 개수와 지문을 찍는다. 층·개수·시드를 바꾸면 ADR 을 고친다.
-- `engine/`, `games/mini_gungi.py`·`nano_gungi.py`, `eval/`(solver·완벽한 상대·시험 판), `scripts/solve_nano.py`·`nano_trials.py` 를 바꾸면 `-m slow` 를 다시 돌린다. CI 는 나노 군의를 풀지 않는다.
+- `engine/`, `games/mini_gungi.py`·`nano_gungi.py`, `eval/`(solver·완벽한 상대·시험 판), `scripts/solve_nano.py`·`nano_trials.py` 를 바꾸면 `-m from_scratch` 를 다시 돌린다. CI 는 나노 군의를 풀지 않는다.
 
 ### 틱택토 검증 (2단계, 2026-11-27 통과)
 
 - `uv run python -m scripts.verify_tictactoe` — 처음부터 학습해 완벽한 상대와 둔다. 학습 시드 0 은 선수·후수 각 100판 무패, 가치 일치율 0.79 였다. 100판 중 서로 다른 대국은 선수 5가지, 후수 60가지라 "100판 무패" 가 시험하는 국면은 판 수보다 훨씬 좁다.
-- 로컬 CPU(Windows, torch 스레드 1)에서 420초가 걸려 CI 의 5분 기준을 넘는다. CI 는 1세대 스모크 테스트만 돌고, 완료 기준은 `uv run pytest -m slow` 로 로컬에서 확인한다. `-m slow` 는 나노 군의 풀이와 그 확인(약 16분)도 함께 돌린다. CI 환경(리눅스)에서는 학습 전체를 재지도 통과시키지도 않았다.
-- `ai/`, `games/base.py`, `games/tictactoe.py`, `eval/`(solver·완벽한 상대·harness), `scripts/train.py`·`verify_tictactoe.py`, 틱택토 하이퍼파라미터를 바꾸면 `-m slow` 를 다시 돌린다. CI 는 학습이 약해지는 변경을 잡지 못한다.
+- 로컬 CPU(Windows, torch 스레드 1)에서 420초가 걸려 CI 의 5분 기준을 넘는다. CI 는 1세대 스모크 테스트만 돌고, 완료 기준은 `uv run pytest -m from_scratch` 로 로컬에서 확인한다. `-m from_scratch` 는 나노 군의 풀이와 그 확인(약 16분)도 함께 돌린다. CI 환경(리눅스)에서는 학습 전체를 재지도 통과시키지도 않았다.
+- `ai/`, `games/base.py`, `games/tictactoe.py`, `eval/`(solver·완벽한 상대·harness), `scripts/train.py`·`verify_tictactoe.py`, 틱택토 하이퍼파라미터를 바꾸면 `-m from_scratch` 를 다시 돌린다. CI 는 학습이 약해지는 변경을 잡지 못한다.
 
 ## 원칙
 

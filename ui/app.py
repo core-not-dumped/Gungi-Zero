@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 
@@ -76,11 +76,17 @@ class App:
         variants: Sequence[tuple[str, Gungi]],
         opponent_name: str,
         make_opponent: OpponentFactory,
+        levels: Mapping[str, Sequence[tuple[str, OpponentFactory]]] | None = None,
     ) -> None:
-        """`variants` 는 (이름, 게임) 목록이고 첫 번째가 기본이다."""
+        """`variants` 는 (이름, 게임) 목록이고 첫 번째가 기본이다.
+
+        `levels` 는 변형 이름마다의 난이도 목록 (이름, 상대)이고 약한 것부터다. 난이도가 있는
+        변형에서는 `opponent_name`·`make_opponent` 대신 고른 난이도의 상대가 둔다.
+        """
         self._variants = tuple(variants)
-        self._opponent_name = opponent_name
-        self._make_opponent = make_opponent
+        self._default_opponent = (opponent_name, make_opponent)
+        self._levels = {name: tuple(options) for name, options in (levels or {}).items()}
+        self._level = 0
         self._variant = 0
         self._vs_opponent = True
         self._human = Player.FIRST
@@ -90,6 +96,20 @@ class App:
         self.log_scroll = 0
         """기보에서 마지막 수부터 위로 올려 본 줄 수."""
         self._fonts: dict[int, pygame.font.Font] = {}
+
+    # 상대
+
+    def _variant_levels(self) -> tuple[tuple[str, OpponentFactory], ...]:
+        return self._levels.get(self._variants[self._variant][0], ())
+
+    def _opponent(self) -> tuple[str, OpponentFactory]:
+        levels = self._variant_levels()
+        return levels[self._level] if levels else self._default_opponent
+
+    @property
+    def opponent_name(self) -> str:
+        """지금 고른 변형과 난이도에서 두는 상대의 이름."""
+        return self._opponent()[0]
 
     # 입력
 
@@ -139,7 +159,7 @@ class App:
     def _start(self) -> None:
         game = self._variants[self._variant][1]
         if self._vs_opponent:
-            opponent = self._make_opponent(game, self.seed)
+            opponent = self._opponent()[1](game, self.seed)
             self.session = PlaySession(game, opponent, self._human.opponent)
         else:
             self.session = PlaySession(game)
@@ -150,7 +170,12 @@ class App:
         self.session = None
 
     def _set_variant(self, variant: int) -> None:
+        if variant != self._variant:
+            self._level = 0
         self._variant = variant
+
+    def _add_level(self, amount: int) -> None:
+        self._level = min(max(self._level + amount, 0), len(self._variant_levels()) - 1)
 
     def _set_vs_opponent(self, vs_opponent: bool) -> None:
         self._vs_opponent = vs_opponent
@@ -184,9 +209,10 @@ class App:
             option(name, index, 130, partial(self._set_variant, index), index == self._variant)
             for index, (name, _) in enumerate(self._variants)
         ]
+        ai_label = "AI" if self._variant_levels() else self.opponent_name
         buttons += [
             option(label, index, 210, partial(self._set_vs_opponent, vs), vs == self._vs_opponent)
-            for index, (label, vs) in enumerate((("사람", False), (self._opponent_name, True)))
+            for index, (label, vs) in enumerate((("사람", False), (ai_label, True)))
         ]
         if self._vs_opponent:
             buttons += [
@@ -203,7 +229,12 @@ class App:
                 Button("-", pygame.Rect(260, 370, 50, 44), partial(self._add_seed, -1)),
                 Button("+", pygame.Rect(500, 370, 50, 44), partial(self._add_seed, 1)),
             ]
-        buttons.append(Button("대국 시작", pygame.Rect(260, 470, 360, 56), self._start))
+        if self._vs_opponent and self._variant_levels():
+            buttons += [
+                Button("약하게", pygame.Rect(260, 430, 90, 44), partial(self._add_level, -1)),
+                Button("강하게", pygame.Rect(530, 430, 90, 44), partial(self._add_level, 1)),
+            ]
+        buttons.append(Button("대국 시작", pygame.Rect(260, 500, 360, 56), self._start))
         return buttons
 
     def square_rect(self, square: int) -> pygame.Rect:
@@ -253,6 +284,9 @@ class App:
         if self._vs_opponent:
             rows += [("내 선후", 290), ("AI 시드", 370)]
             self._write(surface, str(self.seed), 22, TEXT, center=(405, 392))
+            if self._variant_levels():
+                rows.append(("난이도", 430))
+                self._write(surface, self.opponent_name, 20, TEXT, center=(440, 452))
         for label, top in rows:
             self._write(surface, label, 22, TEXT, midleft=(80, top + 22))
 
@@ -315,7 +349,7 @@ class App:
         if result is None:
             who = ""
             if self._vs_opponent:
-                who = f" ({self._opponent_name})" if session.opponent_to_move else " (나)"
+                who = f" ({self.opponent_name})" if session.opponent_to_move else " (나)"
             line(f"차례: {PLAYER_NAMES[session.position.player]}{who}", 80)
             line(f"{session.position.ply + 1} 수째", 112)
         else:

@@ -98,7 +98,7 @@ def test_the_command_prints_the_figures(
     assert [episode["seed"] for episode in summary["episodes"]] == list(range(10))
 
 
-@pytest.mark.slow
+@pytest.mark.from_scratch
 def test_the_nano_gungi_is_solved_over_the_documented_number_of_states(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -116,7 +116,7 @@ def test_the_nano_gungi_is_solved_over_the_documented_number_of_states(
 
 
 # ADR-0007 의 시험 판. 층·개수·시드나 풀이가 달라지면 바뀌고, 이전의 검증과 비교할 수 없게 된다.
-TRIALS_FINGERPRINT = "707277fac24102f12f372c280464db76f48c22114f6ebae79dedd04246089f6b"
+TRIALS_FINGERPRINT = "cff3d8961bdf9d3ea0869220d041a0ad5fcc9601a72b25a99f7f5559c33b57c5"
 
 
 def check_trial_positions(solution: Solution) -> None:

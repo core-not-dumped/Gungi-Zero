@@ -67,41 +67,41 @@ def test_a_new_session_starts_at_the_initial_position() -> None:
 
 def test_clicking_a_movable_piece_shows_where_it_can_go() -> None:
     session = PlaySession(GAME)
-    click(session, "a1")
-    assert session.selected == square("a1")
-    assert targets(session) == {"a2", "a3", "b2"}
+    click(session, "b1")
+    assert session.selected == square("b1")
+    assert targets(session) == {"a1", "a2", "b2"}
 
 
 def test_clicking_a_target_plays_the_move_and_logs_it() -> None:
     session = PlaySession(GAME)
-    click(session, "a1", "b2")
-    assert session.position == GAME.apply_move(GAME.initial_position(), GAME.parse_move("a1-b2"))
-    assert session.log == ["1. ▲ a1-b2"]
+    click(session, "b1", "b2")
+    assert session.position == GAME.apply_move(GAME.initial_position(), GAME.parse_move("b1-b2"))
+    assert session.log == ["1. ▲ b1-b2"]
     assert session.selected is None
     assert session.targets == frozenset()
 
 
-@pytest.mark.parametrize("elsewhere", ["c4", "b3", "a1"])
+@pytest.mark.parametrize("elsewhere", ["a4", "c4", "b1"])
 def test_clicking_elsewhere_releases_the_selection(elsewhere: str) -> None:
-    # c4 는 상대 말, b3 은 갈 수 없는 빈칸, a1 은 고른 말 자신이다.
+    # a4 는 상대 말, c4 는 갈 수 없는 빈칸, b1 은 고른 말 자신이다.
     session = PlaySession(GAME)
-    click(session, "a1", elsewhere)
+    click(session, "b1", elsewhere)
     assert session.selected is None
     assert session.position == GAME.initial_position()
 
 
 def test_clicking_outside_the_board_releases_the_selection() -> None:
     session = PlaySession(GAME)
-    click(session, "a1")
+    click(session, "b1")
     session.click(None)
     assert session.selected is None
 
 
 def test_clicking_another_movable_piece_selects_it_instead() -> None:
     session = PlaySession(GAME)
-    click(session, "a1", "c2")
+    click(session, "b1", "c2")
     assert session.selected == square("c2")
-    assert targets(session) == {"c1", "c3"}
+    assert targets(session) == {"a2", "b2", "b3", "c1", "c3", "c4"}
 
 
 @pytest.mark.parametrize("name", ["b3", "a4"])
@@ -177,7 +177,7 @@ def test_the_opponent_moves_only_on_its_own_turn() -> None:
     session.play_opponent()
     assert session.log == []
 
-    click(session, "a1", "b2")
+    click(session, "b1", "b2")
     assert session.opponent_to_move
     after_human = session.position
     session.play_opponent()

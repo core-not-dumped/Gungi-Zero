@@ -132,7 +132,7 @@ def test_one_generation_of_the_real_settings_reaches_the_measurement(
         assert sum(summary[seat].values()) == 100
 
 
-@pytest.mark.slow
+@pytest.mark.from_scratch
 def test_the_trained_ai_never_loses_to_the_perfect_opponent(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

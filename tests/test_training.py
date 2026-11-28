@@ -259,7 +259,14 @@ def test_an_existing_checkpoint_is_not_overwritten(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "field",
-    ["episodes_per_generation", "buffer_generations", "steps_per_generation", "batch_size"],
+    [
+        "episodes_per_generation",
+        "buffer_generations",
+        "steps_per_generation",
+        "batch_size",
+        "checkpoint_every",
+        "parallel_games",
+    ],
 )
 def test_a_config_that_would_do_nothing_is_rejected(field: str) -> None:
     with pytest.raises(ValueError):
@@ -274,7 +281,7 @@ def test_the_optimizer_defaults_follow_the_spec() -> None:
 
 def test_each_episode_starts_where_the_injected_rule_says(tmp_path: Path) -> None:
     game = Gungi(NANO_GUNGI)
-    later = game.apply_move(game.initial_position(), game.parse_move("a1-a2"))
+    later = game.apply_move(game.initial_position(), game.parse_move("b1-b2"))
     network = SpyNetwork(game.action_space_size)
     asked: list[random.Random] = []
 
@@ -298,3 +305,59 @@ def test_each_episode_starts_where_the_injected_rule_says(tmp_path: Path) -> Non
     assert len(asked) == 2 * 3
     first_board = network.calls[0][1][0].numpy()
     np.testing.assert_array_equal(first_board, game.encode(later))
+
+
+def test_checkpoints_are_kept_every_few_generations_and_at_the_end(tmp_path: Path) -> None:
+    game = TicTacToe()
+    network = ResNet(game.tensor_shape, game.action_space_size, ResNetConfig(1, 4))
+    logger = MemoryLogger()
+
+    train(
+        game,
+        network,
+        small_config(checkpoint_every=2),
+        generations=5,
+        logger=logger,
+        end_reason=lambda position: "end",
+        checkpoint_dir=tmp_path,
+        seed=0,
+    )
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "generation-0002.pt",
+        "generation-0004.pt",
+        "generation-0005.pt",
+    ]
+    # 기록은 세대마다 남는다.
+    assert [step for step, _ in logger.records] == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.parametrize("capacity", [0, 1000])
+def test_the_share_of_remembered_evaluations_is_logged_only_with_a_cache(
+    capacity: int, tmp_path: Path
+) -> None:
+    game = TicTacToe()
+    network = ResNet(game.tensor_shape, game.action_space_size, ResNetConfig(1, 4))
+    logger = MemoryLogger()
+
+    train(
+        game,
+        network,
+        small_config(evaluation_cache=capacity),
+        generations=1,
+        logger=logger,
+        end_reason=lambda position: "end",
+        checkpoint_dir=tmp_path,
+        seed=0,
+    )
+
+    [(_, metrics)] = logger.records
+    if capacity:
+        assert 0 < metrics["self_play/remembered_fraction"] < 1
+    else:
+        assert "self_play/remembered_fraction" not in metrics
+
+
+def test_a_negative_cache_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        replace(small_config(), evaluation_cache=-1)

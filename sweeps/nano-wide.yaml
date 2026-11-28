@@ -1,0 +1,25 @@
+# Nano gungi tuning, wide first pass: 18 settings x 1 seed. One seed only screens candidates;
+# confirm the good ones with more seeds before believing the difference.
+# ASCII only: wandb reads this file with the Windows code page (cp949).
+name: nano-wide
+project: gungi-zero
+# Every combination once, the baseline first.
+method: grid
+metric:
+  name: dev/passed
+  goal: maximize
+parameters:
+  # Names of EXPERIMENTS in scripts/tune.py.
+  experiment:
+    values: [base, steps50, steps400, buffer30, buffer50, episodes100, episodes400, sims50, sims200, cpuct0.75, cpuct2.5, explore-all, noise0.4, lr3e-4, lr3e-3, batch256, net2x64, net4x32]
+  seed:
+    values: [0]
+# Windows has no /usr/bin/env, so the command is spelled out. It goes through `uv run`: a bare
+# `python` started by the agent resolves to the base interpreter, which lacks the dependencies.
+command:
+  - uv
+  - run
+  - python
+  - -m
+  - scripts.tune
+  - ${args}

@@ -7,80 +7,15 @@ from typing import Any
 import pytest
 import torch
 
-from ai.random_play import RandomAI
 from ai.resnet import ResNet, ResNetConfig
 from eval.solver import Solution, Verdict, solve
 from eval.trial_positions import Stratum, select_trials
-from games.mini_gungi import Gungi, GungiPosition
-from games.nano_gungi import NANO_GUNGI
+from games.mini_gungi import Gungi
 from scripts import verify_nano
 from scripts.train import SETUPS
-from scripts.verify_nano import (
-    NanoVerification,
-    Puzzle,
-    Reply,
-    measure,
-    metrics_of,
-    solve_puzzle,
-)
+from scripts.verify_nano import NanoVerification, measure, metrics_of
 from tests.solver_helpers import SMALL_NANO
 from tests.stub_networks import UniformNetwork
-
-GAME = Gungi(NANO_GUNGI)
-
-
-class ScriptedAI:
-    """시작 국면에서는 `first` 를 두고, 그 밖에는 帥 를 잡을 수 있으면 잡는다."""
-
-    def __init__(self, first: str = "a1-a3^", captures: bool = True) -> None:
-        self._first = GAME.parse_move(first)
-        self._captures = captures
-
-    def choose(self, position: GungiPosition) -> Any:
-        if position.ply == 0:
-            return self._first
-        moves = GAME.legal_moves(position)
-        finishing = [m for m in moves if GAME.outcome(GAME.apply_move(position, m)) is not None]
-        if self._captures:
-            return finishing[0]
-        return next(m for m in moves if m not in finishing)
-
-
-def test_the_puzzle_asks_for_the_first_move_and_a_capture_after_every_reply() -> None:
-    puzzle = solve_puzzle(GAME, lambda index: ScriptedAI())
-
-    assert puzzle.first_move == "a1-a3^"
-    assert len(puzzle.replies) == 7
-    assert len({reply.reply for reply in puzzle.replies}) == 7
-    assert all(reply.captured for reply in puzzle.replies)
-    assert puzzle.passed
-
-
-def test_another_first_move_fails_the_puzzle_but_the_replies_are_still_asked() -> None:
-    puzzle = solve_puzzle(GAME, lambda index: ScriptedAI(first="a1-b2"))
-
-    assert puzzle.first_move == "a1-b2"
-    assert all(reply.captured for reply in puzzle.replies)
-    assert not puzzle.passed
-
-
-def test_one_missed_capture_fails_the_puzzle() -> None:
-    puzzle = solve_puzzle(GAME, lambda index: ScriptedAI(captures=index != 4))
-
-    assert [reply.captured for reply in puzzle.replies].count(False) == 1
-    assert not puzzle.passed
-
-
-def test_the_puzzle_ais_are_numbered_from_the_first_move() -> None:
-    asked: list[int] = []
-
-    def ai(index: int) -> RandomAI:
-        asked.append(index)
-        return RandomAI(GAME, index)
-
-    solve_puzzle(GAME, ai)
-
-    assert asked == list(range(8))
 
 
 @pytest.fixture(scope="module")
@@ -127,8 +62,7 @@ def test_a_sample_larger_than_the_game_takes_every_unfinished_state(small: Solut
     assert 0 < measured.best_move_rates.all.positions < len(small)
 
 
-def verification(trials_passed: int = 200, puzzle_passed: bool = True) -> NanoVerification:
-    reply = Reply("b4-a4", "a3-a4", puzzle_passed)
+def verification(trials_passed: int = 200) -> NanoVerification:
     return NanoVerification(
         strata=(verify_nano.StratumScore("draw/stack", trials_passed, 200),),
         failed_trials=tuple(range(200 - trials_passed)),
@@ -136,18 +70,12 @@ def verification(trials_passed: int = 200, puzzle_passed: bool = True) -> NanoVe
         best_move_rates=verify_nano.BestMoveRate(
             verify_nano.Agreement(3, 4), verify_nano.Agreement(1, 4)
         ),
-        puzzle=Puzzle("a1-a3^", (reply,)),
     )
 
 
-@pytest.mark.parametrize(
-    ("trials_passed", "puzzle_passed", "passed"),
-    [(200, True, True), (199, True, False), (200, False, False)],
-)
-def test_the_criterion_needs_every_trial_and_the_puzzle(
-    trials_passed: int, puzzle_passed: bool, passed: bool
-) -> None:
-    assert verification(trials_passed, puzzle_passed).passed is passed
+@pytest.mark.parametrize(("trials_passed", "passed"), [(200, True), (199, False)])
+def test_the_criterion_needs_every_trial(trials_passed: int, passed: bool) -> None:
+    assert verification(trials_passed).passed is passed
 
 
 def test_the_strata_and_the_diagnostics_are_logged_apart() -> None:
@@ -156,9 +84,6 @@ def test_the_strata_and_the_diagnostics_are_logged_apart() -> None:
         "trial/draw/stack/total": 200,
         "trial/passed": 199,
         "trial/total": 200,
-        "puzzle/first_move": 1,
-        "puzzle/replies_captured": 1,
-        "puzzle/replies": 1,
         "diagnostic/value_agreement": 0.5,
         "diagnostic/best_move/all": 0.5,
         "diagnostic/best_move/stacking": 0.75,

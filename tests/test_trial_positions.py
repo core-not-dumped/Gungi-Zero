@@ -68,3 +68,12 @@ def test_a_stratum_without_enough_positions_is_refused(solution: Solution) -> No
     too_many = (Stratum("draw", 10_000, lambda position, value: value.verdict is Verdict.DRAW),)
     with pytest.raises(ValueError, match="draw"):
         select_trials(solution, too_many, seed=0)
+
+
+def test_excluded_boards_are_not_taken_even_from_the_other_side(solution: Solution) -> None:
+    first = select_trials(solution, STRATA, seed=0)
+
+    second = select_trials(solution, STRATA, seed=1, exclude=[t.position for t in first])
+
+    assert len(second) == len(first)
+    assert not set(network_boards(solution, first)) & set(network_boards(solution, second))

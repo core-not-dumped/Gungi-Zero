@@ -4,7 +4,7 @@ from collections import Counter
 
 import pytest
 
-from ai.random_play import RandomAI, play_random_episode
+from ai.random_play import MixedAI, RandomAI, play_random_episode
 from games.base import Outcome
 from games.tictactoe import TicTacToe
 
@@ -63,3 +63,41 @@ def test_replaying_an_episodes_moves_reaches_its_final_position() -> None:
 def test_the_same_seed_replays_the_same_episode() -> None:
     game = TicTacToe()
     assert play_random_episode(game, seed=11) == play_random_episode(game, seed=11)
+
+
+class First:
+    """합법수 가운데 첫 번째만 둔다."""
+
+    def choose(self, position):
+        return TicTacToe().legal_moves(position)[0]
+
+
+@pytest.mark.parametrize(("probability", "low", "high"), [(0.0, 9000, 9000), (0.5, 4800, 5200)])
+def test_a_mixed_ai_plays_a_random_move_with_the_given_probability(
+    probability: float, low: int, high: int
+) -> None:
+    game = TicTacToe()
+    position = game.initial_position()
+    ai = MixedAI(game, First(), probability, seed=2)
+
+    counts = Counter(ai.choose(position) for _ in range(9000))
+
+    # 섞은 무작위 수도 1/9 은 첫 수다: 0.5 면 첫 수가 9분의 5.
+    assert low <= counts[game.legal_moves(position)[0]] <= high
+
+
+def test_a_mixed_ai_with_probability_one_never_asks_the_inner_ai() -> None:
+    class Never:
+        def choose(self, position):
+            raise AssertionError("묻지 않는다")
+
+    game = TicTacToe()
+    ai = MixedAI(game, Never(), 1.0, seed=0)
+
+    assert ai.choose(game.initial_position()) in game.legal_moves(game.initial_position())
+
+
+@pytest.mark.parametrize("probability", [-0.1, 1.1])
+def test_a_probability_outside_zero_to_one_is_refused(probability: float) -> None:
+    with pytest.raises(ValueError):
+        MixedAI(TicTacToe(), First(), probability, seed=0)

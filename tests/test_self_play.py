@@ -207,7 +207,7 @@ def test_an_episode_can_start_from_a_given_position() -> None:
     """주어진 국면에서 두기 시작하고, temperature 1 인 수는 그 대국에서 둔 수로 센다."""
     game = Gungi(NANO_GUNGI)
     start = game.initial_position()
-    for text in ("a1-a2", "b4-a4"):
+    for text in ("b1-a1", "a3-b3"):
         start = game.apply_move(start, game.parse_move(text))
     network = UniformNetwork(game.tensor_shape, game.action_space_size)
     last = NANO.exploration_moves - 1

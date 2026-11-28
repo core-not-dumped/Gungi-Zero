@@ -10,3 +10,5 @@ checkpoints/
 solutions/
 # wandb 가 남기는 로컬 기록
 wandb/
+# make_levels 가 만드는 난이도 단계
+levels/

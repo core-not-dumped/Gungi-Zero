@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Generic
 
@@ -14,6 +15,7 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
+from ai.batched import EvaluationCache, Steps, run_alone, run_batched
 from ai.episode import Episode, value_for
 from ai.mcts import DEFAULT_C_PUCT, MCTS, RootNoise, canonical_action_indices
 from ai.network import Network
@@ -78,6 +80,49 @@ def play_self_play_episode(
     같은 시드, 같은 시작 국면, 같은 신경망은 같은 결과를 낸다. `exploration_moves` 는 `ply` 가
     아니라 이 대국에서 둔 수를 센다.
     """
+    steps = _episode_steps(game, network, config, seed=seed, device=device, start=start)
+    return run_alone(steps, network, device)
+
+
+def play_self_play_episodes(
+    game: Game[PositionT, MoveT],
+    network: Network,
+    config: SelfPlayConfig,
+    games: Sequence[tuple[int, PositionT | None]],
+    *,
+    parallel: int,
+    device: torch.device | str = "cpu",
+    cache: EvaluationCache | None = None,
+) -> list[SelfPlayResult[PositionT, MoveT]]:
+    """`games` 의 `(시드, 시작 국면)` 마다 한 판씩, `parallel` 판까지 함께 두며 신경망 평가를
+    묶는다. 결과는 `games` 의 순서다.
+
+    대국마다는 `play_self_play_episode` 와 같다. 판을 따로따로 평가하는 신경망이면 `parallel` 에
+    상관없이 같은 결과다. 실제 신경망은 묶는 크기에 따라 부동소수점 끝자리가 달라질 수 있다.
+    `cache` 를 주면 같은 판의 평가를 되풀이하지 않는다.
+    """
+    return run_batched(
+        (
+            _episode_steps(game, network, config, seed=seed, device=device, start=start)
+            for seed, start in games
+        ),
+        network,
+        width=parallel,
+        device=device,
+        cache=cache,
+    )
+
+
+def _episode_steps(
+    game: Game[PositionT, MoveT],
+    network: Network,
+    config: SelfPlayConfig,
+    *,
+    seed: int | None,
+    device: torch.device | str,
+    start: PositionT | None,
+) -> Steps[SelfPlayResult[PositionT, MoveT]]:
+    """자가 대국 한 판을 평가마다 멈추는 작업으로 (`ai.batched`)."""
     search = MCTS(
         game,
         network,
@@ -92,7 +137,7 @@ def play_self_play_episode(
     moves: list[MoveT] = []
     turns: list[_Turn] = []
     while (outcome := game.outcome(position)) is None:
-        result = search.search(position)
+        result = yield from search.search_steps(position)
         # `canonical` 은 후수 차례에서 비싸서 부르지 않는다. `encode` 는 원래 국면에 바로 부르고
         # 마스크는 합법수의 인덱스를 옮겨 만든다.
         legal_mask = np.zeros(game.action_space_size, dtype=bool)

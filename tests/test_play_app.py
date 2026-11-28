@@ -61,17 +61,31 @@ def test_the_mini_variant_can_be_chosen() -> None:
     assert app.session.game.tensor_shape[1:] == (5, 5)
 
 
+def test_the_nano_board_starts_from_the_play_setup() -> None:
+    app = new_app()
+    press(app, "대국 시작")
+    assert app.session is not None
+    game, position = app.session.game, app.session.position
+    assert game.tensor_shape[1:] == (4, 3)
+    placed = {
+        name: game.tower(position, game.parse_move(f"{name}-{name}").source)
+        for name in ("b1", "c1", "c2")
+    }
+    assert [tower[0][1] for tower in placed.values()] == ["帥", "兵", "大"]
+    assert {tower[0][0] for tower in placed.values()} == {Player.FIRST}
+
+
 def test_two_people_take_turns_on_the_same_screen() -> None:
     app = new_app()
     press(app, "사람")
     press(app, "대국 시작")
+    click_square(app, "b1")
     click_square(app, "a1")
-    click_square(app, "b2")
     wait_for_opponent(app)
     assert app.session is not None
     assert len(app.session.log) == 1
+    click_square(app, "b4")
     click_square(app, "c4")
-    click_square(app, "b3")
     assert len(app.session.log) == 2
 
 
@@ -207,3 +221,58 @@ def test_every_screen_draws(variant: str) -> None:
     draw(app)
     for button in app.buttons():
         assert pygame.Rect((0, 0), WINDOW_SIZE).contains(button.rect)
+
+
+def levelled_app(chosen: list[str]) -> App:
+    def factory(name: str):
+        def make(game: Gungi, seed: int):
+            chosen.append(name)
+            return random_opponent(game, seed)
+
+        return make
+
+    names = ("랜덤 AI", "Elo 210", "Elo 405")
+    levels = {VARIANTS[0][0]: [(name, factory(name)) for name in names]}
+    return App(VARIANTS, OPPONENT_NAME, random_opponent, levels)
+
+
+def test_a_variant_with_levels_starts_at_the_weakest_and_can_be_made_stronger() -> None:
+    chosen: list[str] = []
+    app = levelled_app(chosen)
+    press(app, "대국 시작")
+    press(app, "새 대국")
+    press(app, "강하게")
+    press(app, "강하게")
+    press(app, "강하게")
+    press(app, "대국 시작")
+    press(app, "새 대국")
+    press(app, "약하게")
+    press(app, "대국 시작")
+
+    assert chosen == ["랜덤 AI", "Elo 405", "Elo 210"]
+    assert app.opponent_name == "Elo 210"
+    draw(app)
+
+
+def test_the_levelled_opponent_button_is_just_ai() -> None:
+    assert "AI" in labels(levelled_app([]))
+
+
+def test_a_variant_without_levels_keeps_the_single_opponent() -> None:
+    chosen: list[str] = []
+    app = levelled_app(chosen)
+    press(app, "강하게")
+    press(app, VARIANTS[1][0])
+
+    assert "강하게" not in labels(app)
+    assert OPPONENT_NAME in labels(app)
+    press(app, "대국 시작")
+    assert app.opponent_name == OPPONENT_NAME
+    assert chosen == []
+
+
+def test_levels_are_not_offered_between_two_people() -> None:
+    app = levelled_app([])
+    press(app, "사람")
+    assert "강하게" not in labels(app)
+    draw(app)

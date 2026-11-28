@@ -1,4 +1,4 @@
-"""나노 군의 시험 판의 조건. 실제 풀이에서 뽑는 것은 `test_solve_nano` 의 slow 테스트가 본다."""
+"""나노 군의 시험 판의 조건. 실제 풀이로 뽑는 것은 from_scratch 테스트가 본다."""
 
 from games.mini_gungi import Gungi
 from games.nano_gungi import NANO_GUNGI

@@ -40,13 +40,15 @@ def select_trials(
     strata: Sequence[Stratum[PositionT]],
     *,
     seed: int,
+    exclude: Sequence[PositionT] = (),
 ) -> tuple[Trial[PositionT], ...]:
     """층 순서대로, 층마다 `count` 개를 시드로 고른다. 같은 풀이와 시드는 같은 시험 판을 낸다.
 
     후보는 도달 가능한 상태마다 `reachable_positions` 의 국면 하나이고, 끝난 국면은 뺀다.
     국면에는 거기까지의 경로가 있어 반복 판정이 이어진다. 정규형의 판이 같은 두 국면은 신경망에
     같은 판이라 함께 뽑지 않는다. 겹치는 층에서는 앞의 층이 먼저 가져가므로 후보가 적은 층을
-    앞에 둔다. 후보가 모자란 층이 있으면 `ValueError` 다.
+    앞에 둔다. `exclude` 의 국면과 신경망에 같은 판은 뽑지 않는다. 후보가 모자란 층이 있으면
+    `ValueError` 다.
     """
     game = solution.game
     candidates: list[list[Trial[PositionT]]] = [[] for _ in strata]
@@ -59,7 +61,7 @@ def select_trials(
                 found.append(Trial(stratum.name, position, value))
 
     rng = random.Random(seed)
-    taken: set[Hashable] = set()
+    taken: set[Hashable] = {game.board_key(game.canonical(position)) for position in exclude}
     selected: list[Trial[PositionT]] = []
     for stratum, found in zip(strata, candidates, strict=True):
         rng.shuffle(found)
